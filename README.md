@@ -63,6 +63,38 @@
 | 系统配置 | ✅ 已完成 | 系统参数配置管理 |
 | API 接口 | ✅ 已完成 | RESTful API 接口 |
 
+## 🛠️ 技术栈
+
+### 后端技术
+
+| 技术 | 版本 | 说明 |
+|------|------|------|
+| [Go](https://go.dev/) | 1.21+ | 编程语言 |
+| [GoFrame](https://goframe.org/) | 2.x | 企业级 Web 开发框架 |
+| [gnet](https://github.com/panjf2000/gnet) | 2.x | 高性能、轻量级网络框架，用于 TCP/UDP 端口转发 |
+| [wireguard-go](https://github.com/WireGuard/wireguard-go) | - | WireGuard 纯 Go 实现，无需内核模块 |
+| [Wintun](https://www.wintun.net/) | 0.14+ | Windows TUN 网卡驱动 |
+| [go-qrcode](https://github.com/skip2/go-qrcode) | - | 二维码生成库 |
+| SQLite / MySQL | 3.x / 8.0+ | 数据存储 |
+
+### 前端技术
+
+| 技术 | 版本 | 说明 |
+|------|------|------|
+| [Vue.js](https://vuejs.org/) | 3.x | 渐进式 JavaScript 框架 |
+| [Vite](https://vitejs.dev/) | 5.x | 下一代前端构建工具 |
+| [Element Plus](https://element-plus.org/) | 2.x | Vue 3 UI 组件库 |
+| [Pinia](https://pinia.vuejs.org/) | 2.x | Vue 状态管理库 |
+| [Vue Router](https://router.vuejs.org/) | 4.x | Vue 官方路由 |
+| [Axios](https://axios-http.com/) | 1.x | HTTP 客户端 |
+
+### 网络协议
+
+| 技术 | 说明 |
+|------|------|
+| [WireGuard](https://www.wireguard.com/) | 现代化、高性能 VPN 协议 |
+| TCP/UDP | 端口转发支持的传输层协议 |
+
 ## 🏗️ 技术架构
 
 ```
