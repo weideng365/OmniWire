@@ -127,7 +127,7 @@
               </div>
               
               <div class="copyright">
-                &copy; 2024 OmniWire Team. All rights reserved.
+                &copy; 2026 OmniWire Team. All rights reserved.
               </div>
             </div>
           </div>

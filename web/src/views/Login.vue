@@ -23,7 +23,7 @@
            </div>
         </div>
         <div class="footer-text">
-          &copy; 2024 OmniWire Team
+          &copy; 2026 OmniWire Team
         </div>
       </div>
       
