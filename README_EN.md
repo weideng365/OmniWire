@@ -196,7 +196,7 @@ docker-compose up -d
 ```
 
 Exposed ports:
-- `8080` — Web management interface
+- `8110` — Web management interface
 - `51820/udp` — WireGuard VPN
 
 ### Production Build
@@ -328,6 +328,18 @@ security:
 3. WireGuard key pair auto-generated on first startup and stored in database
 4. User passwords stored with bcrypt hashing — no plaintext exposure on database leak
 
+### Cloud Server Port Configuration
+
+When deploying on cloud servers (Aliyun, Tencent Cloud, AWS, GCP, etc.), you need to open ports in the **Security Group** in addition to the system firewall (iptables/firewalld):
+
+1. **Web Management Port** — Open TCP `8110` (or custom port) for management interface access
+2. **WireGuard Port** — Open UDP `51820` (or custom port) for VPN connections
+3. **Port Forwarding Ports** — Open corresponding TCP/UDP ports based on your forwarding rules
+4. **Important Notes**:
+   - Security Group rules and system firewall are two independent layers; both must allow traffic
+   - Only open necessary ports; avoid using `0.0.0.0/0` open-all policies
+   - Consider restricting management port access by source IP or accessing via VPN
+
 ## Roadmap
 
 ### Planned Features
@@ -336,6 +348,7 @@ security:
 - [ ] **Domain & Certificate Binding for Forwarding** — Bind custom domains and SSL certificates to port forwarding rules, enabling HTTPS forwarding
 - [ ] **Reverse Proxy** — Built-in HTTP/HTTPS reverse proxy with load balancing, header rewriting, WebSocket proxy support
 - [ ] **Domain-based Routing** — SNI/Host-based traffic routing, directing different domains to different backend services
+- [ ] **Cloud DNS Integration** — Integrate with Aliyun, Tencent Cloud, Cloudflare APIs for automatic DNS record management (add/modify/delete)
 - [ ] Operation Logging — Record user operation logs for audit trails
 - [ ] Security Policies — Port access whitelist/blacklist configuration
 - [ ] Multi-user Management — Multiple users with role-based permissions
