@@ -390,6 +390,13 @@ func CreatePeer(ctx context.Context, input *PeerInput) (*entity.WireguardPeer, e
 
 // UpdatePeer 更新客户端
 func UpdatePeer(ctx context.Context, id int, input *PeerInput) error {
+	// 先获取客户端信息（用于同步运行时状态）
+	var peer entity.WireguardPeer
+	err := g.DB().Model("wireguard_peer").Where("id", id).Scan(&peer)
+	if err != nil {
+		return fmt.Errorf("客户端不存在")
+	}
+
 	updateData := g.Map{
 		"updated_at": time.Now(),
 	}
@@ -407,9 +414,26 @@ func UpdatePeer(ctx context.Context, id int, input *PeerInput) error {
 		return 0
 	}()
 
-	_, err := g.DB().Model("wireguard_peer").Where("id", id).Update(updateData)
+	_, err = g.DB().Model("wireguard_peer").Where("id", id).Update(updateData)
 	if err != nil {
 		return fmt.Errorf("更新客户端失败: %v", err)
+	}
+
+	// 同步运行时状态
+	server := wgserver.GetServer()
+	allowedIPs := input.AllowedIPs
+	if allowedIPs == "" {
+		allowedIPs = peer.AllowedIps
+	}
+
+	if input.Enabled {
+		// 启用：添加到 WireGuard 设备
+		server.EnablePeer(peer.PublicKey, allowedIPs)
+		g.Log().Infof(ctx, "[WireGuard] 启用客户端: %s", peer.Name)
+	} else {
+		// 禁用：从 WireGuard 设备移除
+		server.DisablePeer(peer.PublicKey)
+		g.Log().Infof(ctx, "[WireGuard] 禁用客户端: %s", peer.Name)
 	}
 
 	return nil

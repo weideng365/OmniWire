@@ -757,6 +757,58 @@ func (s *WireGuardServer) RemovePeer(publicKey string) error {
 	return s.dev.IpcSet(ipc)
 }
 
+// DisablePeer 禁用 Peer（从设备移除但保留内存记录）
+func (s *WireGuardServer) DisablePeer(publicKey string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// 更新内存状态
+	if peer, ok := s.peers[publicKey]; ok {
+		peer.Enabled = false
+	}
+
+	if !s.running || s.dev == nil {
+		return nil
+	}
+
+	// 从设备移除
+	hexKey, _ := base64ToHex(publicKey)
+	ipc := fmt.Sprintf("public_key=%s\nremove=true\n", hexKey)
+	return s.dev.IpcSet(ipc)
+}
+
+// EnablePeer 启用 Peer（添加到设备）
+func (s *WireGuardServer) EnablePeer(publicKey, allowedIPs string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// 更新内存状态
+	if peer, ok := s.peers[publicKey]; ok {
+		peer.Enabled = true
+	} else {
+		s.peers[publicKey] = &Peer{
+			PublicKey:  publicKey,
+			AllowedIPs: allowedIPs,
+			Enabled:    true,
+		}
+	}
+
+	if !s.running || s.dev == nil {
+		return nil
+	}
+
+	// 添加到设备
+	hexKey, _ := base64ToHex(publicKey)
+	ipc := fmt.Sprintf("public_key=%s\n", hexKey)
+	for _, cidr := range strings.Split(allowedIPs, ",") {
+		cidr = strings.TrimSpace(cidr)
+		if cidr != "" {
+			ipc += fmt.Sprintf("allowed_ip=%s\n", cidr)
+		}
+	}
+	return s.dev.IpcSet(ipc)
+}
+
 // ==================== 辅助工具 ====================
 
 // GenerateKeyPair 生成 Base64 密钥对
