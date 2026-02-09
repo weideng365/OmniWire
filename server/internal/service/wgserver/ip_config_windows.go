@@ -26,16 +26,25 @@ func configureIPWithLUID(tunDevice tun.Device, address string) error {
 	}
 	fmt.Printf("[DEBUG] Parsed prefix: %s\n", prefix.String())
 
-	// 如果是网络地址，自动修正为 .1
+	// 如果 IP 等于网络地址（主机位全 0），自动修正为 .1
 	addr := prefix.Addr()
 	if addr.Is4() {
 		ip4 := addr.As4()
-		if ip4[3] == 0 {
-			ip4[3] = 1
+		bits := prefix.Bits()
+		shift := uint(32 - bits)
+		ipNum := uint32(ip4[0])<<24 | uint32(ip4[1])<<16 | uint32(ip4[2])<<8 | uint32(ip4[3])
+		mask := uint32(0xFFFFFFFF) << shift
+		netNum := ipNum & mask
+		if ipNum == netNum {
+			hostNum := netNum | 1
+			ip4[0] = byte(hostNum >> 24)
+			ip4[1] = byte(hostNum >> 16)
+			ip4[2] = byte(hostNum >> 8)
+			ip4[3] = byte(hostNum)
 			addr = netip.AddrFrom4(ip4)
-			prefix = netip.PrefixFrom(addr, prefix.Bits())
+			prefix = netip.PrefixFrom(addr, bits)
 			fmt.Printf("[DEBUG] Auto-corrected to: %s\n", prefix.String())
-			g.Log().Warningf(context.Background(), "[WireGuard] 检测到网段地址，自动修正服务端 IP 为: %s", addr.String())
+			g.Log().Infof(context.Background(), "[WireGuard] 检测到网络地址，自动修正服务端 IP 为: %s", addr.String())
 		}
 	}
 

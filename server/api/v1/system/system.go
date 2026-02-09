@@ -33,6 +33,28 @@ type DashboardRes struct {
 	ActiveConnections int    `json:"activeConnections"`
 }
 
+// LoginReq 登录请求
+type LoginReq struct {
+	g.Meta   `path:"/login" method:"post" tags:"系统管理" summary:"用户登录"`
+	Username string `json:"username" v:"required"`
+	Password string `json:"password" v:"required"`
+}
+
+// LoginRes 登录响应
+type LoginRes struct {
+	Token string `json:"token"`
+}
+
+// ChangePasswordReq 修改密码请求
+type ChangePasswordReq struct {
+	g.Meta      `path:"/change-password" method:"post" tags:"系统管理" summary:"修改密码"`
+	OldPassword string `json:"oldPassword" v:"required"`
+	NewPassword string `json:"newPassword" v:"required|min-length:6"`
+}
+
+// ChangePasswordRes 修改密码响应
+type ChangePasswordRes struct{}
+
 // HealthReq 健康检查请求
 type HealthReq struct {
 	g.Meta `path:"/health" method:"get" tags:"系统管理" summary:"健康检查"`

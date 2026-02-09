@@ -22,3 +22,5 @@ temp.yaml
 .claude
 **/uploads/**
 **/node_modules/**
+**/dist/**
+**/temp/**server/data/

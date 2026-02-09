@@ -79,6 +79,17 @@ var (
 	}
 )
 
+// GetTotalActiveConnections 获取所有规则的活跃连接总数
+func GetTotalActiveConnections() int {
+	rulesMutex.RLock()
+	defer rulesMutex.RUnlock()
+	var total int32
+	for _, rule := range runningRules {
+		total += atomic.LoadInt32(&rule.stats.CurrentConn)
+	}
+	return int(total)
+}
+
 // GetList 获取转发规则列表
 func GetList(ctx context.Context, page, pageSize int) ([]*forward.RuleInfo, int, error) {
 	rules := make([]*forward.RuleInfo, 0)

@@ -43,7 +43,9 @@ request.interceptors.response.use(
 export const systemApi = {
     info: () => request.get('/system/info'),
     dashboard: () => request.get('/system/dashboard'),
-    health: () => request.get('/system/health')
+    health: () => request.get('/system/health'),
+    login: (data) => request.post('/system/login', data),
+    changePassword: (data) => request.post('/system/change-password', data)
 }
 
 // WireGuard API

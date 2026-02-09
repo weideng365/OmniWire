@@ -78,6 +78,7 @@ type ConfigRes struct {
 	ClientAllowedIPs    string `json:"clientAllowedIPs"`
 	ProxyAddress        string `json:"proxyAddress"`
 	LogLevel            string `json:"logLevel"`
+	AutoStart           bool   `json:"autoStart"`
 }
 
 // UpdateConfigReq 更新配置请求
@@ -93,6 +94,7 @@ type UpdateConfigReq struct {
 	ClientAllowedIPs    string `json:"clientAllowedIPs"`
 	ProxyAddress        string `json:"proxyAddress"`
 	LogLevel            string `json:"logLevel"`
+	AutoStart           bool   `json:"autoStart"`
 }
 
 // UpdateConfigRes 更新配置响应

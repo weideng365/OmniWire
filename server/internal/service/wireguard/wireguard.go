@@ -45,6 +45,7 @@ type ConfigOutput struct {
 	ClientAllowedIPs    string
 	ProxyAddress        string
 	LogLevel            string
+	AutoStart           bool
 }
 
 // ConfigInput 配置输入
@@ -59,6 +60,7 @@ type ConfigInput struct {
 	ClientAllowedIPs    string
 	ProxyAddress        string
 	LogLevel            string
+	AutoStart           bool
 }
 
 // PeerInput 客户端输入
@@ -145,31 +147,29 @@ func GetConfig(ctx context.Context) (*ConfigOutput, error) {
 		ClientAllowedIps    string
 		ProxyAddress        string
 		LogLevel            string
+		AutoStart           int
 	}
 
 	err := g.DB().Model("wireguard_config").Where("id", 1).Scan(&config)
 	if err != nil {
 		// 返回默认配置
 		return &ConfigOutput{
-			Interface:           "wg0",
+			Interface:           "omniwire",
 			ListenPort:          g.Cfg().MustGet(ctx, "wireguard.listenPort", 51820).Int(),
 			Address:             g.Cfg().MustGet(ctx, "wireguard.addressRange", "10.66.66.1/24").String(),
-			DNS:                 g.Cfg().MustGet(ctx, "wireguard.dns", "1.1.1.1, 8.8.8.8").String(),
+			DNS:                 g.Cfg().MustGet(ctx, "wireguard.dns", "223.5.5.5").String(),
 			MTU:                 g.Cfg().MustGet(ctx, "wireguard.mtu", 1420).Int(),
-			EthDevice:           "eth0",
+			EthDevice:           "",
 			PersistentKeepalive: 25,
 			ClientAllowedIPs:    "0.0.0.0/0, ::/0",
 			ProxyAddress:        ":50122",
 			LogLevel:            "error",
+			AutoStart:           false,
 		}, nil
 	}
 
-	// 如果 EndpointAddress 为空，尝试自动获取 (这里简单使用 placeholder 或配置值)
-	endpoint := config.EndpointAddress
-	if endpoint == "" { // 获取服务器公网 IP
-		endpoint = g.Cfg().MustGet(ctx, "wireguard.endpoint", "YOUR_SERVER_IP").String()
-	}
-
+	// 直接返回数据库中的 EndpointAddress，不做默认值替换
+	// 这样前端可以正确显示和保存用户配置的值
 	return &ConfigOutput{
 		Interface:           config.InterfaceName,
 		ListenPort:          config.ListenPort,
@@ -178,24 +178,32 @@ func GetConfig(ctx context.Context) (*ConfigOutput, error) {
 		Address:             config.Address,
 		DNS:                 config.Dns,
 		MTU:                 config.Mtu,
-		EndpointAddress:     endpoint,
+		EndpointAddress:     config.EndpointAddress,
 		EthDevice:           config.EthDevice,
 		PersistentKeepalive: config.PersistentKeepalive,
 		ClientAllowedIPs:    config.ClientAllowedIps,
 		ProxyAddress:        config.ProxyAddress,
 		LogLevel:            config.LogLevel,
+		AutoStart:           config.AutoStart == 1,
 	}, nil
 }
 
 // UpdateConfig 更新 WireGuard 配置
 func UpdateConfig(ctx context.Context, input *ConfigInput) error {
-	g.Log().Infof(ctx, "[WireGuard] 更新配置请求: EndpointAddress='%s', Port=%d", input.EndpointAddress, input.ListenPort)
+	g.Log().Infof(ctx, "[WireGuard] 更新配置请求: EndpointAddress='%s', Port=%d, AutoStart=%v, ClientAllowedIPs='%s'",
+		input.EndpointAddress, input.ListenPort, input.AutoStart, input.ClientAllowedIPs)
+
+	autoStart := 0
+	if input.AutoStart {
+		autoStart = 1
+	}
+
 	// 更新数据库配置
-	_, err := g.DB().Exec(ctx, `
-		UPDATE wireguard_config SET 
-			listen_port = ?, 
-			address = ?, 
-			dns = ?, 
+	result, err := g.DB().Exec(ctx, `
+		UPDATE wireguard_config SET
+			listen_port = ?,
+			address = ?,
+			dns = ?,
 			mtu = ?,
 			endpoint_address = ?,
 			eth_device = ?,
@@ -203,13 +211,35 @@ func UpdateConfig(ctx context.Context, input *ConfigInput) error {
 			client_allowed_ips = ?,
 			proxy_address = ?,
 			log_level = ?,
+			auto_start = ?,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = 1
 	`, input.ListenPort, input.Address, input.DNS, input.MTU, input.EndpointAddress,
-		input.EthDevice, input.PersistentKeepalive, input.ClientAllowedIPs, input.ProxyAddress, input.LogLevel)
+		input.EthDevice, input.PersistentKeepalive, input.ClientAllowedIPs, input.ProxyAddress, input.LogLevel, autoStart)
 
 	if err != nil {
+		g.Log().Errorf(ctx, "[WireGuard] 更新配置失败: %v", err)
 		return fmt.Errorf("更新配置失败: %v", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	g.Log().Infof(ctx, "[WireGuard] 配置更新完成, 影响行数: %d", rowsAffected)
+
+	if rowsAffected == 0 {
+		// 记录不存在，生成密钥并插入新记录
+		privateKey, publicKey, keyErr := wgserver.GenerateKeyPair()
+		if keyErr != nil {
+			privateKey, publicKey = "", ""
+		}
+		_, err = g.DB().Exec(ctx, `
+			INSERT INTO wireguard_config (id, private_key, public_key, listen_port, address, dns, mtu, endpoint_address, eth_device, persistent_keepalive, client_allowed_ips, proxy_address, log_level, auto_start)
+			VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, privateKey, publicKey, input.ListenPort, input.Address, input.DNS, input.MTU, input.EndpointAddress,
+			input.EthDevice, input.PersistentKeepalive, input.ClientAllowedIPs, input.ProxyAddress, input.LogLevel, autoStart)
+		if err != nil {
+			return fmt.Errorf("插入配置失败: %v", err)
+		}
+		g.Log().Infof(ctx, "[WireGuard] 配置记录不存在，已插入新记录")
 	}
 
 	// 如果服务正在运行，需要重启
@@ -227,7 +257,7 @@ func UpdateConfig(ctx context.Context, input *ConfigInput) error {
 func GetPeerConfig(ctx context.Context, id int) (string, error) {
 	var peer entity.WireguardPeer
 	err := g.DB().Model("wireguard_peer").Where("id", id).Scan(&peer)
-	if err != nil {
+	if err != nil || peer.Id == 0 {
 		return "", fmt.Errorf("客户端不存在")
 	}
 
@@ -236,8 +266,11 @@ func GetPeerConfig(ctx context.Context, id int) (string, error) {
 		return "", err
 	}
 
+	// 检查公网地址是否已配置
 	endpoint := serverConfig.EndpointAddress
-	g.Log().Infof(ctx, "[WireGuard] 生成客户端配置, EndpointAddress: '%s', DB原始值: '%s'", endpoint, serverConfig.EndpointAddress)
+	if endpoint == "" {
+		return "", fmt.Errorf("请先在 WireGuard 配置中设置公网地址")
+	}
 
 	listenPort := serverConfig.ListenPort
 	allowedIPs := serverConfig.ClientAllowedIPs
@@ -245,7 +278,9 @@ func GetPeerConfig(ctx context.Context, id int) (string, error) {
 	mtu := serverConfig.MTU
 	persistentKeepalive := serverConfig.PersistentKeepalive
 
-	// 构建客户端配置 (严格匹配用户要求的格式)
+	g.Log().Infof(ctx, "[WireGuard] 生成客户端配置, Endpoint: %s:%d, AllowedIPs: %s", endpoint, listenPort, allowedIPs)
+
+	// 构建客户端配置
 	config := fmt.Sprintf(`[Interface]
 PrivateKey = %s
 Address = %s
@@ -503,4 +538,30 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%d 小时前", int(d.Hours()))
 	}
 	return fmt.Sprintf("%d 天前", int(d.Hours()/24))
+}
+
+// InitWireGuard 初始化 WireGuard 服务（自动启动）
+func InitWireGuard(ctx context.Context) {
+	// 检查是否配置了自动启动
+	var config struct {
+		AutoStart int
+	}
+	err := g.DB().Model("wireguard_config").Where("id", 1).Scan(&config)
+	if err != nil {
+		g.Log().Debugf(ctx, "[WireGuard] 读取配置失败: %v", err)
+		return
+	}
+
+	if config.AutoStart != 1 {
+		g.Log().Info(ctx, "[WireGuard] 自动启动未开启，跳过")
+		return
+	}
+
+	// 自动启动 WireGuard 服务
+	g.Log().Info(ctx, "[WireGuard] 自动启动已开启，正在启动服务...")
+	if err := Start(ctx); err != nil {
+		g.Log().Errorf(ctx, "[WireGuard] 自动启动失败: %v", err)
+	} else {
+		g.Log().Info(ctx, "[WireGuard] 自动启动成功")
+	}
 }

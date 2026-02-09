@@ -107,10 +107,7 @@ func (s *WireGuardServer) Initialize(ctx context.Context) error {
 		s.publicKey = publicKey
 
 		// 保存到数据库
-		// 注意：这里只是初始化，后续 UpdateConfig 会覆盖
-		_, _ = g.DB().Exec(ctx, `INSERT OR REPLACE INTO wireguard_config
-			(id, interface_name, listen_port, private_key, public_key, address)
-			VALUES (1, 'wg0', ?, ?, ?, ?)`, s.listenPort, s.privateKey, s.publicKey, s.address)
+		_, _ = g.DB().Exec(ctx, `UPDATE wireguard_config SET private_key = ?, public_key = ? WHERE id = 1`, s.privateKey, s.publicKey)
 	} else {
 		s.privateKey = config.PrivateKey
 		s.publicKey = config.PublicKey
@@ -259,7 +256,7 @@ func (s *WireGuardServer) GetInterfaceName() string {
 		name, _ := s.tun.Name()
 		return name
 	}
-	return "wg0" // default
+	return "omniwire" // default
 }
 
 func (s *WireGuardServer) GetListenPort() int {
@@ -389,15 +386,24 @@ func (s *WireGuardServer) configureInterfaceIP(ifaceName, cidr string) error {
 		return err
 	}
 
-	// 自动修正：如果 IP 是网络地址（例如 198.18.30.0），则自动改为 .1 (198.18.30.1)
-	if ip.Equal(ipNet.IP) {
-		// 简单的 IPv4 处理：最后一位加 1
-		// 对于更复杂的掩码，应该进行位运算，但这里假设是常见的 /24 或私有网段
-		if ip4 := ip.To4(); ip4 != nil {
-			ip4[3]++
-			ip = ip4
+	// 如果 IP 等于网络地址（主机位全 0），自动修正为 .1
+	if ip4 := ip.To4(); ip4 != nil {
+		netIP := ipNet.IP.To4()
+		// 检查主机位是否全 0
+		mask := ipNet.Mask
+		isNetworkAddr := true
+		for i := 0; i < 4; i++ {
+			if ip4[i]&^mask[i] != 0 {
+				isNetworkAddr = false
+				break
+			}
 		}
-		g.Log().Warningf(context.Background(), "[WireGuard] 检测到网段地址，自动修正服务端 IP 为: %s", ip.String())
+		if isNetworkAddr {
+			copy(ip4, netIP)
+			ip4[3] = 1
+			ip = ip4
+			g.Log().Infof(context.Background(), "[WireGuard] 检测到网络地址，自动修正服务端 IP 为: %s", ip.String())
+		}
 	}
 
 	ipStr := ip.String()
@@ -618,7 +624,8 @@ func (s *WireGuardServer) configureInterfaceIP(ifaceName, cidr string) error {
 
 	} else if runtime.GOOS == "linux" {
 		// ip address add 10.66.66.1/24 dev wg0
-		cmd := exec.Command("ip", "address", "add", cidr, "dev", ifaceName)
+		addr := fmt.Sprintf("%s/%d", ipStr, ones)
+		cmd := exec.Command("ip", "address", "add", addr, "dev", ifaceName)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("ip addr error: %v, output: %s", err, string(out))
 		}
@@ -632,7 +639,7 @@ func (s *WireGuardServer) configureInterfaceIP(ifaceName, cidr string) error {
 		// macOS: ifconfig utun0 10.0.0.1/24 up
 		// 或者: ifconfig utun0 inet 10.0.0.1 10.0.0.1 up
 		// 尝试使用 CIDR 格式
-		cmd := exec.Command("ifconfig", ifaceName, "inet", cidr, "up")
+		cmd := exec.Command("ifconfig", ifaceName, "inet", fmt.Sprintf("%s/%d", ipStr, ones), "up")
 		g.Log().Debugf(context.Background(), "Exec: %s", cmd.String())
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("ifconfig error: %v, output: %s", err, string(out))

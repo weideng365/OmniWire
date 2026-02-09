@@ -84,6 +84,7 @@ func (c *ControllerV1) Config(ctx context.Context, req *wireguard.ConfigReq) (re
 		Address:             config.Address,
 		DNS:                 config.DNS,
 		MTU:                 config.MTU,
+		EndpointAddress:     config.EndpointAddress,
 		PostUp:              config.PostUp,
 		PostDown:            config.PostDown,
 		EthDevice:           config.EthDevice,
@@ -91,6 +92,7 @@ func (c *ControllerV1) Config(ctx context.Context, req *wireguard.ConfigReq) (re
 		ClientAllowedIPs:    config.ClientAllowedIPs,
 		ProxyAddress:        config.ProxyAddress,
 		LogLevel:            config.LogLevel,
+		AutoStart:           config.AutoStart,
 	}
 	return
 }
@@ -108,6 +110,7 @@ func (c *ControllerV1) UpdateConfig(ctx context.Context, req *wireguard.UpdateCo
 		ClientAllowedIPs:    req.ClientAllowedIPs,
 		ProxyAddress:        req.ProxyAddress,
 		LogLevel:            req.LogLevel,
+		AutoStart:           req.AutoStart,
 	})
 	if err != nil {
 		return nil, err
