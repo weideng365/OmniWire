@@ -38,7 +38,7 @@
         </div>
         <div class="detail-item">
           <span class="label">监听端口</span>
-          <span class="value highlight">{{ wgStatus.listenPort || 51820 }}</span>
+          <span class="value highlight">{{ wgStatus.listenPort || 51820 }} UDP</span>
         </div>
         <div class="detail-item">
           <span class="label">服务器公钥</span>
