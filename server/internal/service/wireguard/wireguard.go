@@ -482,21 +482,29 @@ func GetPeerQRCode(ctx context.Context, id int) (string, error) {
 
 // ==================== 辅助函数 ====================
 
-// allocateIP 分配 IP 地址
+// allocateIP 分配 IP 地址，从数据库读取服务端配置的网段
 func allocateIP(ctx context.Context) (string, error) {
-	addressRange := g.Cfg().MustGet(ctx, "wireguard.addressRange", "10.66.66.0/24").String()
+	// 从数据库读取服务端配置的 VPN 网段
+	var addressRange string
+	dbAddress, err := g.DB().Model("wireguard_config").Where("id", 1).Value("address")
+	if err == nil && !dbAddress.IsEmpty() {
+		addressRange = dbAddress.String()
+	} else {
+		// 回退到配置文件默认值
+		addressRange = g.Cfg().MustGet(ctx, "wireguard.addressRange", "10.66.66.1/24").String()
+	}
 
-	// 解析网段
+	// 解析网段（例如: "198.18.88.1/24"）
 	parts := splitCIDR(addressRange)
 	if len(parts) != 2 {
 		return "", fmt.Errorf("无效的地址范围: %s", addressRange)
 	}
 
-	baseIP := parts[0]
+	serverIP := parts[0]
 	mask := parts[1]
-	ipParts := splitIP(baseIP)
+	ipParts := splitIP(serverIP)
 	if len(ipParts) != 4 {
-		return "", fmt.Errorf("无效的 IP 地址: %s", baseIP)
+		return "", fmt.Errorf("无效的 IP 地址: %s", serverIP)
 	}
 
 	// 获取已使用的 IP
@@ -511,7 +519,7 @@ func allocateIP(ctx context.Context) (string, error) {
 		}
 	}
 
-	// 分配新 IP (从 .2 开始, .1 是服务器)
+	// 分配新 IP (从 .2 开始, .1 是服务器保留)
 	for i := 2; i < 255; i++ {
 		newIP := fmt.Sprintf("%s.%s.%s.%d", ipParts[0], ipParts[1], ipParts[2], i)
 		if !usedSet[newIP] {
