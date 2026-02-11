@@ -480,6 +480,66 @@ func GetPeerQRCode(ctx context.Context, id int) (string, error) {
 	return "data:image/png;base64," + base64Str, nil
 }
 
+// GetConnectionLogs 获取连接日志
+func GetConnectionLogs(ctx context.Context, peerId, page, pageSize int) ([]*wireguard.ConnectionLogInfo, int, error) {
+	model := g.DB().Model("wireguard_connection_log")
+
+	if peerId > 0 {
+		model = model.Where("peer_id", peerId)
+	}
+
+	total, err := model.Count()
+	if err != nil {
+		return nil, 0, fmt.Errorf("查询日志总数失败: %v", err)
+	}
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	var logs []struct {
+		Id         int
+		PeerName   string
+		Event      string
+		Endpoint   string
+		TransferRx int64
+		TransferTx int64
+		CreatedAt  string
+	}
+
+	err = g.DB().Model("wireguard_connection_log").
+		Where(func() string {
+			if peerId > 0 {
+				return fmt.Sprintf("peer_id = %d", peerId)
+			}
+			return "1=1"
+		}()).
+		OrderDesc("id").
+		Page(page, pageSize).
+		Scan(&logs)
+	if err != nil {
+		return nil, 0, fmt.Errorf("查询日志失败: %v", err)
+	}
+
+	list := make([]*wireguard.ConnectionLogInfo, 0, len(logs))
+	for _, row := range logs {
+		list = append(list, &wireguard.ConnectionLogInfo{
+			Id:         row.Id,
+			PeerName:   row.PeerName,
+			Event:      row.Event,
+			Endpoint:   row.Endpoint,
+			TransferRx: row.TransferRx,
+			TransferTx: row.TransferTx,
+			CreatedAt:  row.CreatedAt,
+		})
+	}
+
+	return list, total, nil
+}
+
 // ==================== 辅助函数 ====================
 
 // allocateIP 分配 IP 地址，从数据库读取服务端配置的网段

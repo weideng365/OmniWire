@@ -131,6 +131,24 @@ func InitDatabase(ctx context.Context) error {
 		return err
 	}
 
+	// 创建 WireGuard 连接日志表
+	_, err = g.DB().Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS wireguard_connection_log (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			peer_id INTEGER,
+			peer_name VARCHAR(100),
+			public_key VARCHAR(255),
+			event VARCHAR(20),
+			endpoint VARCHAR(255),
+			transfer_rx INTEGER DEFAULT 0,
+			transfer_tx INTEGER DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
 	// 为已存在的 wireguard_config 表添加 auto_start 字段（兼容旧数据库）
 	hasAutoStart, _ := g.DB().GetValue(ctx, `SELECT COUNT(*) FROM pragma_table_info('wireguard_config') WHERE name='auto_start'`)
 	if hasAutoStart.Int() == 0 {
