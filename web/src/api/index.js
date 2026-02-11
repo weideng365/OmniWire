@@ -61,7 +61,8 @@ export const wireguardApi = {
     updatePeer: (id, data) => request.put(`/wireguard/peers/${id}`, data),
     deletePeer: (id) => request.delete(`/wireguard/peers/${id}`),
     peerConfig: (id) => request.get(`/wireguard/peers/${id}/config`),
-    peerQRCode: (id) => request.get(`/wireguard/peers/${id}/qrcode`)
+    peerQRCode: (id) => request.get(`/wireguard/peers/${id}/qrcode`),
+    connectionLogs: (params) => request.get('/wireguard/connection-logs', { params })
 }
 
 // 端口转发 API

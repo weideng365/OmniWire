@@ -119,7 +119,7 @@
               style="--el-switch-on-color: var(--success); --el-switch-off-color: var(--text-muted)"/>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right" align="center">
+        <el-table-column label="操作" width="220" fixed="right" align="center">
           <template #default="{ row }">
             <el-tooltip content="扫码连接" placement="top">
               <el-button circle size="small" @click="showQRCode(row)">
@@ -129,6 +129,11 @@
             <el-tooltip content="下载配置" placement="top">
               <el-button circle size="small" @click="downloadConfig(row)">
                 <el-icon><Download /></el-icon>
+              </el-button>
+            </el-tooltip>
+            <el-tooltip content="连接日志" placement="top">
+              <el-button circle size="small" @click="showConnectionLogs(row)">
+                <el-icon><Notebook /></el-icon>
               </el-button>
             </el-tooltip>
             <el-tooltip content="编辑" placement="top">
@@ -298,6 +303,42 @@
         <p class="qr-tip">请使用 WireGuard 客户端扫描此二维码</p>
       </div>
     </el-dialog>
+
+    <!-- 连接日志对话框 -->
+    <el-dialog v-model="showLogDialog" :title="`连接日志 - ${logPeerName}`" width="720px" destroy-on-close>
+      <el-table :data="connectionLogs" style="width: 100%" v-loading="logLoading" :row-style="{ height: '50px' }">
+        <el-table-column label="事件" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.event === 'online'" type="success" size="small">上线</el-tag>
+            <el-tag v-else-if="row.event === 'offline'" type="danger" size="small">离线</el-tag>
+            <el-tag v-else type="primary" size="small">握手</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="endpoint" label="来源地址" min-width="160">
+          <template #default="{ row }">
+            <code class="ip-tag">{{ row.endpoint || '-' }}</code>
+          </template>
+        </el-table-column>
+        <el-table-column label="流量" min-width="160">
+          <template #default="{ row }">
+            <div class="traffic-stats">
+              <span class="rx"><el-icon><Download /></el-icon> {{ formatBytes(row.transferRx) }}</span>
+              <span class="tx"><el-icon><Upload /></el-icon> {{ formatBytes(row.transferTx) }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="createdAt" label="时间" min-width="160" />
+      </el-table>
+      <div style="display: flex; justify-content: center; margin-top: 16px;">
+        <el-pagination
+          v-model:current-page="logPage"
+          :page-size="logPageSize"
+          :total="logTotal"
+          layout="prev, pager, next"
+          @current-change="onLogPageChange"
+        />
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -305,7 +346,7 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { wireguardApi } from '@/api'
-import { DocumentCopy, View, Hide, VideoPlay, VideoPause, Refresh, Setting, Plus, User, Download, Edit, Delete, Cellphone, Upload, Connection } from '@element-plus/icons-vue'
+import { DocumentCopy, View, Hide, VideoPlay, VideoPause, Refresh, Setting, Plus, User, Download, Edit, Delete, Cellphone, Upload, Connection, Notebook } from '@element-plus/icons-vue'
 
 const loading = ref(false)
 const tableLoading = ref(false)
@@ -317,6 +358,16 @@ const showConfigDialog = ref(false)
 const showQRDialog = ref(false)
 const editingPeer = ref(null)
 const qrcodeData = ref('')
+
+// 连接日志
+const showLogDialog = ref(false)
+const logLoading = ref(false)
+const logPeerName = ref('')
+const logPeerId = ref(0)
+const connectionLogs = ref([])
+const logPage = ref(1)
+const logPageSize = 20
+const logTotal = ref(0)
 
 // 自动刷新配置
 const refreshInterval = ref(parseInt(localStorage.getItem('wg_refresh_interval') || '5'))
@@ -510,6 +561,33 @@ const downloadConfig = async (row) => {
     console.error(err)
     ElMessage.error('下载配置失败，请检查是否已配置公网地址')
   }
+}
+
+const showConnectionLogs = async (row) => {
+  logPeerName.value = row.name
+  logPeerId.value = row.id
+  logPage.value = 1
+  showLogDialog.value = true
+  await loadConnectionLogs()
+}
+
+const loadConnectionLogs = async () => {
+  logLoading.value = true
+  try {
+    const res = await wireguardApi.connectionLogs({
+      peerId: logPeerId.value,
+      page: logPage.value,
+      pageSize: logPageSize
+    })
+    connectionLogs.value = res.data?.list || []
+    logTotal.value = res.data?.total || 0
+  } catch (err) { console.error(err) }
+  logLoading.value = false
+}
+
+const onLogPageChange = (page) => {
+  logPage.value = page
+  loadConnectionLogs()
 }
 
 const handleSaveConfig = async () => {

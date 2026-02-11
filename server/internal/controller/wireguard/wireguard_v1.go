@@ -205,3 +205,17 @@ func (c *ControllerV1) PeerQRCode(ctx context.Context, req *wireguard.PeerQRCode
 	}
 	return
 }
+
+// ConnectionLogs 获取连接日志
+func (c *ControllerV1) ConnectionLogs(ctx context.Context, req *wireguard.ConnectionLogsReq) (res *wireguard.ConnectionLogsRes, err error) {
+	list, total, err := svcWireguard.GetConnectionLogs(ctx, req.PeerId, req.Page, req.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	res = &wireguard.ConnectionLogsRes{
+		List:  list,
+		Total: total,
+		Page:  req.Page,
+	}
+	return
+}

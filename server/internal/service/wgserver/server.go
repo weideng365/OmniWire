@@ -43,6 +43,10 @@ type WireGuardServer struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	stats  *ServerStats
+
+	// 连接日志监控
+	lastHandshakes map[string]time.Time // 上次已知握手时间
+	lastOnline     map[string]bool      // 上次在线状态
 }
 
 // Peer 客户端状态
@@ -210,6 +214,13 @@ func (s *WireGuardServer) Start(interfaceName string, listenPort int, privateKey
 	s.running = true
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	s.stats.StartTime = time.Now()
+
+	// 初始化连接日志监控状态
+	s.lastHandshakes = make(map[string]time.Time)
+	s.lastOnline = make(map[string]bool)
+
+	// 启动连接监控 goroutine
+	go s.monitorConnections()
 
 	g.Log().Info(context.Background(), "[WireGuard] 服务启动成功!")
 	return nil
@@ -845,4 +856,115 @@ func hexToBase64(hexStr string) (string, error) {
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(bytes), nil
+}
+
+// monitorConnections 后台监控 Peer 连接状态并记录日志
+func (s *WireGuardServer) monitorConnections() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+			s.checkConnectionChanges()
+		}
+	}
+}
+
+// checkConnectionChanges 检测连接状态变化并写入日志
+func (s *WireGuardServer) checkConnectionChanges() {
+	// 先刷新实时统计
+	s.RefreshPeerStats()
+
+	s.mu.RLock()
+	// 复制当前 Peer 状态，避免长时间持锁
+	type peerSnapshot struct {
+		PublicKey     string
+		Name          string
+		Endpoint      string
+		LastHandshake time.Time
+		TransferRx    int64
+		TransferTx    int64
+	}
+	snapshots := make([]peerSnapshot, 0, len(s.peers))
+	for _, p := range s.peers {
+		snapshots = append(snapshots, peerSnapshot{
+			PublicKey:     p.PublicKey,
+			Name:          p.Name,
+			Endpoint:      p.Endpoint,
+			LastHandshake: p.LastHandshake,
+			TransferRx:    p.TransferRx,
+			TransferTx:    p.TransferTx,
+		})
+	}
+	s.mu.RUnlock()
+
+	ctx := context.Background()
+
+	// 查询 peer_id 映射（public_key -> id）
+	type peerIdRow struct {
+		Id        int
+		PublicKey string
+		Name      string
+	}
+	var peerIdRows []peerIdRow
+	_ = g.DB().Model("wireguard_peer").Fields("id, public_key, name").Scan(&peerIdRows)
+	peerIdMap := make(map[string]peerIdRow)
+	for _, row := range peerIdRows {
+		peerIdMap[row.PublicKey] = row
+	}
+
+	for _, snap := range snapshots {
+		nowOnline := !snap.LastHandshake.IsZero() && time.Since(snap.LastHandshake) < 3*time.Minute
+		prevHandshake, hasPrev := s.lastHandshakes[snap.PublicKey]
+		wasOnline := s.lastOnline[snap.PublicKey]
+
+		// 获取 peer_id 和 name（优先用数据库的，因为 runtime 可能没有 name）
+		peerID := 0
+		peerName := snap.Name
+		if row, ok := peerIdMap[snap.PublicKey]; ok {
+			peerID = row.Id
+			if peerName == "" {
+				peerName = row.Name
+			}
+		}
+
+		if !snap.LastHandshake.IsZero() {
+			// 握手时间发生变化 → 记录 handshake 事件
+			if !hasPrev || !snap.LastHandshake.Equal(prevHandshake) {
+				s.insertConnectionLog(ctx, peerID, peerName, snap.PublicKey, "handshake", snap.Endpoint, snap.TransferRx, snap.TransferTx)
+			}
+
+			// 从离线变为在线
+			if nowOnline && !wasOnline {
+				s.insertConnectionLog(ctx, peerID, peerName, snap.PublicKey, "online", snap.Endpoint, snap.TransferRx, snap.TransferTx)
+			}
+		}
+
+		// 从在线变为离线
+		if !nowOnline && wasOnline {
+			s.insertConnectionLog(ctx, peerID, peerName, snap.PublicKey, "offline", snap.Endpoint, snap.TransferRx, snap.TransferTx)
+		}
+
+		// 更新追踪状态
+		if !snap.LastHandshake.IsZero() {
+			s.lastHandshakes[snap.PublicKey] = snap.LastHandshake
+		}
+		s.lastOnline[snap.PublicKey] = nowOnline
+	}
+}
+
+// insertConnectionLog 插入连接日志记录
+func (s *WireGuardServer) insertConnectionLog(ctx context.Context, peerID int, peerName, publicKey, event, endpoint string, rx, tx int64) {
+	_, err := g.DB().Exec(ctx,
+		`INSERT INTO wireguard_connection_log (peer_id, peer_name, public_key, event, endpoint, transfer_rx, transfer_tx) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		peerID, peerName, publicKey, event, endpoint, rx, tx,
+	)
+	if err != nil {
+		g.Log().Warningf(ctx, "[WireGuard] 写入连接日志失败: %v", err)
+	} else {
+		g.Log().Debugf(ctx, "[WireGuard] 连接日志: %s [%s] %s endpoint=%s", peerName, event, publicKey[:8]+"...", endpoint)
+	}
 }

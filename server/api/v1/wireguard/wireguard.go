@@ -196,3 +196,31 @@ type PeerQRCodeReq struct {
 type PeerQRCodeRes struct {
 	QRCode string `json:"qrcode"` // Base64 编码的 PNG 图片
 }
+
+// ===================== 连接日志 =====================
+
+// ConnectionLogsReq 获取连接日志请求
+type ConnectionLogsReq struct {
+	g.Meta   `path:"/connection-logs" method:"get" tags:"WireGuard" summary:"获取客户端连接日志"`
+	PeerId   int `json:"peerId" in:"query"`
+	Page     int `json:"page" in:"query" d:"1"`
+	PageSize int `json:"pageSize" in:"query" d:"20"`
+}
+
+// ConnectionLogInfo 连接日志信息
+type ConnectionLogInfo struct {
+	Id         int    `json:"id"`
+	PeerName   string `json:"peerName"`
+	Event      string `json:"event"`
+	Endpoint   string `json:"endpoint"`
+	TransferRx int64  `json:"transferRx"`
+	TransferTx int64  `json:"transferTx"`
+	CreatedAt  string `json:"createdAt"`
+}
+
+// ConnectionLogsRes 获取连接日志响应
+type ConnectionLogsRes struct {
+	List  []*ConnectionLogInfo `json:"list"`
+	Total int                  `json:"total"`
+	Page  int                  `json:"page"`
+}
