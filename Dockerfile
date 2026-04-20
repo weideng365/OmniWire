@@ -7,14 +7,14 @@ COPY web/ ./
 RUN npm run build
 
 # 构建阶段 - 后端
-FROM golang:1.21-alpine AS backend-builder
+FROM golang:1.24-alpine AS backend-builder
 WORKDIR /app
 RUN apk add --no-cache gcc musl-dev
 COPY server/go.mod server/go.sum ./
 RUN go mod download
 COPY server/ ./
-COPY --from=frontend-builder /app/server/resource/public ./resource/public
-RUN CGO_ENABLED=1 go build -o omniwire main.go
+COPY --from=frontend-builder /app/web/dist ./internal/packed/public
+RUN CGO_ENABLED=0 go build -tags embed -ldflags="-s -w" -o omniwire main.go
 
 # 运行阶段
 FROM alpine:3.19
@@ -31,7 +31,6 @@ RUN apk add --no-cache \
     tzdata
 
 COPY --from=backend-builder /app/omniwire .
-COPY --from=backend-builder /app/resource ./resource
 COPY server/manifest/config/config.yaml ./manifest/config/
 
 # 创建数据目录

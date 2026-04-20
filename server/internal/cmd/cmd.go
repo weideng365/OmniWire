@@ -3,6 +3,8 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io/fs"
+	"net/http"
 	"runtime"
 	"strings"
 
@@ -10,13 +12,13 @@ import (
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/os/gcmd"
 	"github.com/gogf/gf/v2/os/gfile"
-	"github.com/gogf/gf/v2/os/gres"
 	"github.com/golang-jwt/jwt/v5"
 
 	"omniwire/internal/controller/forward"
 	"omniwire/internal/controller/port"
 	"omniwire/internal/controller/system"
 	"omniwire/internal/controller/wireguard"
+	"omniwire/internal/packed"
 	forwardService "omniwire/internal/service/forward"
 	wireguardService "omniwire/internal/service/wireguard"
 )
@@ -37,16 +39,20 @@ var (
 
 			s := g.Server()
 
-			// 设置静态文件服务
-			// 优先使用打包的资源，如果没有则使用本地目录
+			// 设置静态文件服务：优先 embed FS，回退本地目录
 			staticPath := "resource/public"
-			if gres.Contains("resource/public") {
-				// 使用打包的静态资源
-				s.SetServerRoot("resource/public")
-				s.SetFileServerEnabled(true)
+			var fileHandler http.Handler
+			var embedFS fs.FS
+			var embedErr error
+			if packed.Enabled {
+				embedFS, embedErr = fs.Sub(packed.FS, ".")
+			} else {
+				embedErr = fs.ErrNotExist
+			}
+			if embedErr == nil {
+				fileHandler = http.FileServer(http.FS(embedFS))
 				g.Log().Info(ctx, "[静态资源] 已加载内嵌资源")
 			} else if gfile.Exists(staticPath) {
-				// 使用本地静态文件目录
 				s.SetServerRoot(staticPath)
 				g.Log().Info(ctx, "[静态资源] 已加载本地目录: "+staticPath)
 			} else {
@@ -122,25 +128,26 @@ var (
 				})
 			})
 
-			// SPA fallback：非 API 且非静态资源的请求返回 index.html
-			s.BindHandler("/*", func(r *ghttp.Request) {
-				// 如果是 API 请求，跳过
-				if r.URL.Path == "/api" || len(r.URL.Path) > 4 && r.URL.Path[:5] == "/api/" {
-					r.Middleware.Next()
-					return
-				}
-				// 尝试静态文件
-				if gres.Contains("resource/public" + r.URL.Path) {
-					r.Middleware.Next()
-					return
-				}
-				if gfile.Exists("resource/public" + r.URL.Path) {
-					r.Middleware.Next()
-					return
-				}
-				// fallback 到 index.html
-				r.Response.ServeFile("resource/public/index.html")
-			})
+			// SPA fallback：embed FS 或本地目录服务静态文件，其余返回 index.html
+			if fileHandler != nil {
+				s.BindHandler("/*", func(r *ghttp.Request) {
+					if strings.HasPrefix(r.URL.Path, "/api") {
+						r.Middleware.Next()
+						return
+					}
+					// 尝试 embed FS 中的文件，不存在则 fallback index.html
+					_, err := embedFS.Open(strings.TrimPrefix(r.URL.Path, "/"))
+					if err != nil {
+						// SPA fallback
+						f, _ := embedFS.Open("index.html")
+						if f != nil {
+							f.Close()
+							r.URL.Path = "/index.html"
+						}
+					}
+					fileHandler.ServeHTTP(r.Response.Writer, r.Request)
+				})
+			}
 
 			// 打印配置信息
 			printConfig(ctx)

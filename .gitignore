@@ -25,3 +25,6 @@ temp.yaml
 **/dist/**
 **/temp/**server/data/
 **/*.db
+# embed public 目录内容由 CI 生成，忽略但保留占位文件
+server/internal/packed/public/*
+!server/internal/packed/public/placeholder
