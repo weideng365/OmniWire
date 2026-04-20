@@ -13,7 +13,7 @@ RUN apk add --no-cache gcc musl-dev
 COPY server/go.mod server/go.sum ./
 RUN go mod download
 COPY server/ ./
-COPY --from=frontend-builder /app/web/dist ./internal/packed/public
+COPY --from=frontend-builder /app/server/resource/public ./internal/packed/public
 RUN CGO_ENABLED=0 go build -tags embed -ldflags="-s -w" -o omniwire main.go
 
 # 运行阶段
