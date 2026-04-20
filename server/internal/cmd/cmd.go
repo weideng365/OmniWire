@@ -45,7 +45,7 @@ var (
 			var embedFS fs.FS
 			var embedErr error
 			if packed.Enabled {
-				embedFS, embedErr = fs.Sub(packed.FS, ".")
+				embedFS, embedErr = fs.Sub(packed.FS, "public")
 			} else {
 				embedErr = fs.ErrNotExist
 			}
