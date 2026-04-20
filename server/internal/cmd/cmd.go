@@ -41,7 +41,6 @@ var (
 
 			// 设置静态文件服务：优先 embed FS，回退本地目录
 			staticPath := "resource/public"
-			var fileHandler http.Handler
 			var embedFS fs.FS
 			var embedErr error
 			if packed.Enabled {
@@ -50,7 +49,6 @@ var (
 				embedErr = fs.ErrNotExist
 			}
 			if embedErr == nil {
-				fileHandler = http.FileServer(http.FS(embedFS))
 				g.Log().Info(ctx, "[静态资源] 已加载内嵌资源")
 			} else if gfile.Exists(staticPath) {
 				s.SetServerRoot(staticPath)
@@ -128,24 +126,39 @@ var (
 				})
 			})
 
-			// SPA fallback：embed FS 或本地目录服务静态文件，其余返回 index.html
-			if fileHandler != nil {
+			// SPA fallback：embed FS 服务静态文件，其余返回 index.html
+			if embedErr == nil {
 				s.BindHandler("/*", func(r *ghttp.Request) {
 					if strings.HasPrefix(r.URL.Path, "/api") {
 						r.Middleware.Next()
 						return
 					}
-					// 尝试 embed FS 中的文件，不存在则 fallback index.html
-					_, err := embedFS.Open(strings.TrimPrefix(r.URL.Path, "/"))
-					if err != nil {
-						// SPA fallback
-						f, _ := embedFS.Open("index.html")
-						if f != nil {
-							f.Close()
-							r.URL.Path = "/index.html"
-						}
+					path := strings.TrimPrefix(r.URL.Path, "/")
+					if path == "" {
+						path = "index.html"
 					}
-					fileHandler.ServeHTTP(r.Response.Writer, r.Request)
+					data, err := fs.ReadFile(embedFS, path)
+					if err != nil {
+						// SPA fallback to index.html
+						data, err = fs.ReadFile(embedFS, "index.html")
+						if err != nil {
+							r.Response.WriteStatus(404)
+							return
+						}
+						path = "index.html"
+					}
+					mime := http.DetectContentType(data)
+					if strings.HasSuffix(path, ".js") {
+						mime = "application/javascript"
+					} else if strings.HasSuffix(path, ".css") {
+						mime = "text/css"
+					} else if strings.HasSuffix(path, ".html") {
+						mime = "text/html; charset=utf-8"
+					} else if strings.HasSuffix(path, ".svg") {
+						mime = "image/svg+xml"
+					}
+					r.Response.Header().Set("Content-Type", mime)
+					r.Response.Write(data)
 				})
 			}
 
