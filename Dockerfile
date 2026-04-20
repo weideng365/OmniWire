@@ -31,7 +31,7 @@ RUN apk add --no-cache \
     tzdata
 
 COPY --from=backend-builder /app/omniwire .
-COPY server/manifest/config/config.yaml ./manifest/config/
+COPY server/manifest/config/config.example.yaml ./manifest/config/config.yaml
 
 # 创建数据目录
 RUN mkdir -p /app/data /app/logs /etc/wireguard

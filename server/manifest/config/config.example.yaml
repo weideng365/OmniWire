@@ -1,0 +1,98 @@
+# OmniWire 配置文件
+# ================================
+
+# 服务器配置
+server:
+  address: ":8110"
+  # serverRoot: "resource/public"  # 静态资源目录，生产环境取消注释
+  dumpRouterMap: false
+  routeOverWrite: true
+  accessLogEnabled: true
+  errorLogEnabled: true
+  pprofEnabled: false
+  logPath: "logs"
+  logStdout: true
+  errorStack: true
+  sessionIdName: "omniwire_session"
+  sessionPath: "temp/sessions"
+  sessionMaxAge: "24h"
+  cookieMaxAge: "24h"
+
+# 日志配置
+logger:
+  path: "logs"
+  file: "{Y-m-d}.log"
+  level: "all"
+  stdout: true
+
+# 数据库配置
+database:
+  default:
+    type: "sqlite"
+    link: "sqlite::@file(./data/omniwire.db)"
+    debug: true
+    dryRun: false
+    charset: "utf8mb4"
+    maxIdle: 10
+    maxOpen: 100
+    maxLifetime: "30s"
+
+# WireGuard 配置
+wireguard:
+  # WireGuard 接口名称
+  interface: "omniwire"
+  # 监听端口
+  listenPort: 51820
+  # 配置文件目录
+  configPath: "/etc/wireguard"
+  # VPN 子网
+  addressRange: "10.66.66.0/24"
+  # DNS 服务器
+  dns: "1.1.1.1, 8.8.8.8"
+  # MTU 设置
+  mtu: 1420
+  # 持久保活间隔（秒）
+  persistentKeepalive: 25
+  # 允许的 IP 范围（客户端路由）
+  allowedIps: "0.0.0.0/0, ::/0"
+  # 服务器公网 IP（自动检测或手动设置）
+  endpoint: ""
+  # 是否启用 PostUp/PostDown 脚本
+  enableNat: true
+  # 网络出口接口（用于 NAT，自动检测或手动设置）
+  outInterface: ""
+
+# 端口转发配置
+forward:
+  # 最大转发规则数量
+  maxRules: 100
+  # 单规则最大连接数
+  maxConnections: 1000
+  # 连接超时时间（秒）
+  timeout: 300
+  # 缓冲区大小（字节）
+  bufferSize: 32768
+
+# 端口管理配置
+port:
+  # 扫描起始端口
+  scanStart: 1
+  # 扫描结束端口
+  scanEnd: 65535
+  # 扫描超时（毫秒）
+  scanTimeout: 100
+  # 扫描并发数
+  scanConcurrency: 100
+
+# 安全配置
+security:
+  # JWT 密钥
+  jwtSecret: "omniwire-secret-key-change-in-production"
+  # Token 过期时间
+  tokenExpire: "24h"
+  # 是否启用登录验证
+  authEnabled: true
+  # 默认管理员用户名
+  adminUsername: "admin"
+  # 默认管理员密码（首次启动后请修改）
+  adminPassword: "admin123"
