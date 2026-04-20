@@ -56,12 +56,12 @@ jobs:
           mkdir -p dist
           cd server
           go build -tags embed -ldflags="-s -w -X omniwire/internal/cmd.AppVersion=${{ github.ref_name }}" \
-            -o ../dist/omniwire-${{ matrix.suffix }} main.go
+            -o ../dist/omniwire-${{ github.ref_name }}-${{ matrix.suffix }} main.go
 
       - uses: actions/upload-artifact@v4
         with:
           name: omniwire-${{ matrix.suffix }}
-          path: dist/omniwire-${{ matrix.suffix }}
+          path: dist/omniwire-${{ github.ref_name }}-${{ matrix.suffix }}
 
   release:
     needs: build
