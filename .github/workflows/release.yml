@@ -37,7 +37,10 @@ jobs:
           npm run build
 
       - name: Copy frontend to embed path
-        run: cp -r server/resource/public server/internal/packed/public
+        run: |
+          rm -rf server/internal/packed/public
+          mkdir -p server/internal/packed/public
+          cp -r server/resource/public/. server/internal/packed/public/
 
       - uses: actions/setup-go@v5
         with:
