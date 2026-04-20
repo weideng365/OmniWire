@@ -75,4 +75,20 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+          body: |
+            ## OmniWire ${{ github.ref_name }}
+
+            网络安全网关系统，提供 WireGuard VPN 服务器管理、TCP/UDP 端口转发和端口监控功能。
+
+            ### 下载说明
+            | 文件 | 平台 |
+            |------|------|
+            | `omniwire-linux-amd64` | Linux x86_64 |
+            | `omniwire-linux-arm64` | Linux ARM64 |
+            | `omniwire-windows-amd64.exe` | Windows x86_64 |
+
+            ### 使用方法
+            1. 下载对应平台的二进制文件
+            2. 运行 `./omniwire`（Linux 需先 `chmod +x`）
+            3. 访问 `http://localhost:8110`，默认账号 `admin` / `admin123`
 
