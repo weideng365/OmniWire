@@ -14,7 +14,7 @@ server:
   logStdout: true
   errorStack: true
   sessionIdName: "omniwire_session"
-  sessionPath: "temp/sessions"
+  sessionPath: "/tmp/omniwire-sessions"
   sessionMaxAge: "24h"
   cookieMaxAge: "24h"
 

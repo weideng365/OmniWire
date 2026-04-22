@@ -4,7 +4,7 @@ package packed
 
 import "embed"
 
-//go:embed public
+//go:embed all:public
 var FS embed.FS
 
 var Enabled = true

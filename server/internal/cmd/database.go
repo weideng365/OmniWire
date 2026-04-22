@@ -184,6 +184,63 @@ func InitDatabase(ctx context.Context) error {
 		}
 	}
 
+	// 创建 OpenVPN 配置表
+	_, err = g.DB().Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS openvpn_config (
+			id INTEGER PRIMARY KEY,
+			protocol VARCHAR(10) DEFAULT 'udp',
+			port INTEGER DEFAULT 1194,
+			endpoint VARCHAR(255) DEFAULT '',
+			subnet VARCHAR(50) DEFAULT '10.8.0.0/24',
+			dns VARCHAR(255) DEFAULT '223.5.5.5',
+			auto_start INTEGER DEFAULT 0,
+			ca_cert TEXT,
+			ca_key TEXT,
+			server_cert TEXT,
+			server_key TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// 创建 OpenVPN 用户表
+	_, err = g.DB().Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS openvpn_user (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username VARCHAR(100) NOT NULL UNIQUE,
+			password VARCHAR(255) NOT NULL,
+			cert TEXT,
+			key TEXT,
+			enabled INTEGER DEFAULT 1,
+			online INTEGER DEFAULT 0,
+			ip VARCHAR(50),
+			connected_at DATETIME,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
 	g.Log().Info(ctx, "[数据库] 数据库表初始化完成")
+
+	// 迁移：为旧数据库添加 OpenVPN 分流字段
+	for _, col := range []string{"endpoint", "route_mode", "split_routes"} {
+		has, _ := g.DB().GetValue(ctx, `SELECT COUNT(*) FROM pragma_table_info('openvpn_config') WHERE name=?`, col)
+		if has.Int() == 0 {
+			_, _ = g.DB().Exec(ctx, `ALTER TABLE openvpn_config ADD COLUMN `+col+` TEXT DEFAULT ''`)
+		}
+	}
+
+	// 迁移：为 openvpn_user 添加 static_ip 列
+	hasStaticIP, _ := g.DB().GetValue(ctx, `SELECT COUNT(*) FROM pragma_table_info('openvpn_user') WHERE name='static_ip'`)
+	if hasStaticIP.Int() == 0 {
+		_, _ = g.DB().Exec(ctx, `ALTER TABLE openvpn_user ADD COLUMN static_ip TEXT DEFAULT ''`)
+	}
+
 	return nil
 }

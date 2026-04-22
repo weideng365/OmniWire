@@ -1,0 +1,14 @@
+import{_ as a}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{a as m,c as f,d as o,w as e,e as s,b as l,y as t}from"./index-MjvzUB9I.js";const b={},v={class:"guide-page"};function y(r,n){const u=s("el-page-header"),i=s("el-step"),d=s("el-steps"),p=s("el-card");return m(),f("div",v,[o(u,{onBack:n[0]||(n[0]=O=>r.$router.back()),title:"返回",content:"OpenVPN 使用说明",style:{"margin-bottom":"24px"}}),o(p,{style:{"margin-bottom":"20px"}},{header:e(()=>[...n[1]||(n[1]=[l("b",null,"一、Linux 服务端安装 OpenVPN",-1)])]),default:e(()=>[o(d,{direction:"vertical",active:99},{default:e(()=>[o(i,{title:"安装 OpenVPN"},{description:e(()=>[...n[2]||(n[2]=[l("pre",{class:"code"},`## Debian/Ubuntu
+apt update && apt install -y openvpn curl
+
+## CentOS/RHEL
+yum install -y epel-release && yum install -y openvpn curl
+
+## Alpine (Docker)
+apk add --no-cache openvpn curl`,-1)])]),_:1}),o(i,{title:"启用 IP 转发"},{description:e(()=>[...n[3]||(n[3]=[l("pre",{class:"code"},`echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+sysctl -p`,-1)])]),_:1}),o(i,{title:"启动 OmniWire 并开启 OpenVPN 服务"},{description:e(()=>[...n[4]||(n[4]=[l("p",null,"在 OmniWire 页面点击「启动服务」，系统会自动生成证书和配置文件。",-1)])]),_:1})]),_:1})]),_:1}),o(p,{style:{"margin-bottom":"20px"}},{header:e(()=>[...n[5]||(n[5]=[l("b",null,"二、Windows 客户端安装",-1)])]),default:e(()=>[n[6]||(n[6]=l("ol",{class:"guide-list"},[l("li",null,[t("下载 "),l("a",{href:"https://openvpn.net/community-downloads/",target:"_blank"},"OpenVPN GUI"),t(" 并安装")]),l("li",null,[t("在 OmniWire 用户管理页面创建用户，点击下载按钮获取 "),l("code",null,".ovpn"),t(" 配置文件")]),l("li",null,[t("将 "),l("code",null,".ovpn"),t(" 文件放入 "),l("code",null,"C:\\Program Files\\OpenVPN\\config\\")]),l("li",null,"右键系统托盘 OpenVPN 图标 → 连接，输入用户名和密码")],-1))]),_:1}),o(p,{style:{"margin-bottom":"20px"}},{header:e(()=>[...n[7]||(n[7]=[l("b",null,"三、Linux/macOS 客户端",-1)])]),default:e(()=>[n[8]||(n[8]=l("pre",{class:"code"},`## 安装客户端
+apt install -y openvpn   # Ubuntu
+brew install openvpn     # macOS
+
+## 连接（交互输入用户名密码）
+sudo openvpn --config your-username.ovpn`,-1))]),_:1}),o(p,{style:{"margin-bottom":"20px"}},{header:e(()=>[...n[9]||(n[9]=[l("b",null,"四、Android / iOS",-1)])]),default:e(()=>[n[10]||(n[10]=l("ol",{class:"guide-list"},[l("li",null,[t("安装 "),l("b",null,"OpenVPN Connect"),t("（App Store / Google Play）")]),l("li",null,[t("下载 "),l("code",null,".ovpn"),t(" 配置文件，通过文件管理器或邮件导入 App")]),l("li",null,"输入用户名和密码连接")],-1))]),_:1}),o(p,null,{header:e(()=>[...n[11]||(n[11]=[l("b",null,"五、分流说明",-1)])]),default:e(()=>[n[12]||(n[12]=l("p",null,[t("在「服务配置」中选择"),l("b",null,"分流"),t("模式，填写需要走 VPN 的 IP 段（CIDR 格式，逗号分隔），例如：")],-1)),n[13]||(n[13]=l("pre",{class:"code"},"10.0.0.0/8, 192.168.1.0/24, 172.16.0.0/12",-1)),n[14]||(n[14]=l("p",null,"只有这些 IP 段的流量会经过 VPN，其余流量走本地网络，不影响正常上网。",-1)),n[15]||(n[15]=l("p",null,[t("修改配置后需"),l("b",null,"重启 OpenVPN 服务"),t("才能生效，并重新下载客户端配置文件。")],-1))]),_:1})])}const N=a(b,[["render",y],["__scopeId","data-v-1ff16f01"]]);export{N as default};

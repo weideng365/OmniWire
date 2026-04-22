@@ -4,14 +4,14 @@
 
 ![OmniWire Logo](https://img.shields.io/badge/OmniWire-Network%20Security%20Gateway-blue?style=for-the-badge&logo=wireguard)
 
-**基于 GoFrame 开发的 WireGuard 服务端 & 网络端口转发管理系统**
+**基于 GoFrame 开发的 WireGuard / OpenVPN 服务端 & 网络端口转发管理系统**
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat-square&logo=go)](https://go.dev/)
 [![GoFrame](https://img.shields.io/badge/GoFrame-2.x-green?style=flat-square)](https://goframe.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.x-4FC08D?style=flat-square&logo=vue.js)](https://vuejs.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
-[English](README_EN.md) | 简体中文
+[English](README_EN.md) | 简体中文 | [项目文档(Wiki)](https://github.com/weideng365/OmniWire/wiki)
 
 </div>
 
@@ -19,7 +19,7 @@
 
 ## 项目简介
 
-**OmniWire** 是一个功能强大的网络安全网关系统，集成了 WireGuard VPN 服务端管理、TCP/UDP 端口转发、智能端口管理等核心功能。采用 GoFrame 作为后端框架，Vue 3 作为前端框架，提供现代化的 Web 管理界面。
+**OmniWire** 是一个功能强大的网络安全网关系统，集成了 WireGuard VPN 服务端管理、OpenVPN SSL VPN 管理、TCP/UDP 端口转发、智能端口管理等核心功能。采用 GoFrame 作为后端框架，Vue 3 作为前端框架，提供现代化的 Web 管理界面。
 
 ## 核心技术栈
 
@@ -53,6 +53,7 @@
 | 技术 | 说明 |
 |------|------|
 | [WireGuard](https://www.wireguard.com/) | 现代化、高性能 VPN 协议 |
+| [OpenVPN](https://openvpn.net/) | 成熟稳定的 SSL VPN 协议 |
 | TCP/UDP | 端口转发支持的传输层协议 |
 
 ## 已完成功能清单
@@ -68,6 +69,20 @@
 | ✅ 流量统计 | 统计每个客户端的上传/下载流量 |
 | ✅ 一键安装 WireGuard | 自动检测并安装 WireGuard 内核模块 |
 | ✅ 服务启停控制 | 一键启动/停止/重启 WireGuard 服务 |
+
+### OpenVPN SSL VPN 服务端
+| 功能 | 描述 |
+|------|------|
+| ✅ 服务器配置管理 | 管理 OpenVPN 协议、端口、子网、DNS、路由模式等 |
+| ✅ 用户账号管理 | 添加/编辑/删除用户，bcrypt 密码加密 |
+| ✅ 证书自动生成 | 自动生成 CA 证书和用户证书（ECDSA） |
+| ✅ 客户端配置下载 | 一键下载 .ovpn 配置文件 |
+| ✅ 连接状态监控 | 实时显示用户在线状态和连接信息 |
+| ✅ 流量统计 | 统计每个用户的上传/下载流量 |
+| ✅ 路由模式 | 支持全局路由和分流路由（CIDR 网段过滤） |
+| ✅ 静态 IP 分配 | 为每个用户分配固定 VPN 内网 IP |
+| ✅ 服务启停控制 | 一键启动/停止/重启 OpenVPN 服务 |
+| ✅ 使用指南 | 内置多平台客户端配置指南 |
 
 ### TCP/UDP 端口转发
 | 功能 | 描述 |
@@ -111,9 +126,13 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                     Vue 3 Frontend                          │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │  Dashboard  │  │  WireGuard  │  │  Port Forward       │  │
-│  │             │  │  Management │  │  Management         │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+│  │  Dashboard  │  │  WireGuard  │  │  OpenVPN   │  │
+│  │             │  │  Management │  │  Management│  │
+│  └─────────────┘  └─────────────┘  └────────────┘  │
+│  ┌─────────────┐  ┌─────────────────────────────┐   │
+│  │  Port       │  │  Port Forward               │   │
+│  │  Management │  │  Management                 │   │
+│  └─────────────┘  └─────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
                               │ Axios + Bearer Token
                               ▼
@@ -130,9 +149,12 @@
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │              Core Services                          │    │
 │  │  ┌───────────┐ ┌───────────┐ ┌───────────────────┐  │    │
-│  │  │ WireGuard │ │   TCP/UDP │ │   Port            │  │    │
-│  │  │  Service  │ │  Forward  │ │   Manager         │  │    │
+│  │  │ WireGuard │ │  OpenVPN  │ │   TCP/UDP         │  │    │
+│  │  │  Service  │ │  Service  │ │   Forward         │  │    │
 │  │  └───────────┘ └───────────┘ └───────────────────┘  │    │
+│  │  ┌───────────────────────────────────────────────┐  │    │
+│  │  │              Port Manager                     │  │    │
+│  │  └───────────────────────────────────────────────┘  │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -198,6 +220,7 @@ docker-compose up -d
 容器暴露端口：
 - `8080` — Web 管理界面
 - `51820/udp` — WireGuard VPN
+- `1194/udp` `1194/tcp` — OpenVPN
 
 ### 生产构建
 
@@ -227,6 +250,14 @@ cd server && CGO_ENABLED=1 go build -o omniwire main.go
 2. 在「配置」中设置服务器公网 IP（Endpoint）、监听端口、子网等参数
 3. 点击「添加客户端」创建 Peer，系统自动分配 IP 和生成密钥对
 4. 通过「下载配置」或「扫描二维码」将配置导入客户端设备
+
+### OpenVPN 管理
+
+1. 进入「OpenVPN」页面，首次使用需点击「启动」开启服务
+2. 在「配置」中设置协议（TCP/UDP）、监听端口、VPN 子网、DNS、路由模式等
+3. 点击「添加用户」创建账号，系统自动生成证书和分配 IP
+4. 通过「下载配置」获取 .ovpn 文件，导入客户端使用
+5. 支持全局路由和分流路由模式，分流模式可指定仅通过 VPN 访问的网段
 
 ### 端口转发
 
@@ -291,6 +322,17 @@ security:
 | PUT | `/api/v1/wireguard/config` | 更新配置 | 是 |
 | GET | `/api/v1/wireguard/peers` | 客户端列表 | 是 |
 | POST | `/api/v1/wireguard/peers` | 创建客户端 | 是 |
+| GET | `/api/v1/openvpn/status` | OpenVPN 状态 | 是 |
+| POST | `/api/v1/openvpn/start` | 启动 OpenVPN | 是 |
+| POST | `/api/v1/openvpn/stop` | 停止 OpenVPN | 是 |
+| POST | `/api/v1/openvpn/restart` | 重启 OpenVPN | 是 |
+| GET | `/api/v1/openvpn/config` | 获取 OpenVPN 配置 | 是 |
+| PUT | `/api/v1/openvpn/config` | 更新 OpenVPN 配置 | 是 |
+| GET | `/api/v1/openvpn/users` | 用户列表 | 是 |
+| POST | `/api/v1/openvpn/users` | 创建用户 | 是 |
+| PUT | `/api/v1/openvpn/users/{id}` | 更新用户 | 是 |
+| DELETE | `/api/v1/openvpn/users/{id}` | 删除用户 | 是 |
+| GET | `/api/v1/openvpn/users/{id}/config` | 下载用户配置 | 是 |
 | GET | `/api/v1/forward` | 转发规则列表 | 是 |
 | POST | `/api/v1/forward` | 创建转发规则 | 是 |
 | PUT | `/api/v1/forward/:id` | 更新转发规则 | 是 |
@@ -333,8 +375,9 @@ security:
 在阿里云、腾讯云等云服务器上部署时，除了系统防火墙（iptables/firewalld）外，还需要在云控制台的**安全组**中放行相应端口：
 
 1. **Web 管理端口** — 放行 TCP `8110`（或自定义端口），用于访问管理界面
-2. **WireGuard 端口** — 放行 UDP `51820`（或自定义端口），用于 VPN 连接
-3. **端口转发端口** — 根据配置的转发规则，放行对应的 TCP/UDP 端口
+2. **WireGuard 端口** — 放行 UDP `51820`（或自定义端口），用于 WireGuard VPN 连接
+3. **OpenVPN 端口** — 放行 UDP/TCP `1194`（或自定义端口），用于 OpenVPN 连接
+4. **端口转发端口** — 根据配置的转发规则，放行对应的 TCP/UDP 端口
 4. **注意事项**：
    - 安全组规则和系统防火墙是两层独立的防护，两者都需要放行才能访问
    - 建议仅放行必要端口，避免使用 `0.0.0.0/0` 全开策略
@@ -366,6 +409,7 @@ OmniWire/
 │   │   ├── service/         # 业务逻辑层
 │   │   │   ├── wgserver/    # WireGuard 服务器生命周期管理
 │   │   │   ├── wireguard/   # WireGuard 业务逻辑
+│   │   │   ├── openvpn/     # OpenVPN 服务管理（进程、证书、认证）
 │   │   │   ├── forward/     # TCP/UDP 端口转发引擎
 │   │   │   └── port/        # 端口扫描和监控
 │   │   ├── model/           # 数据模型

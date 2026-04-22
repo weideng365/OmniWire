@@ -28,6 +28,10 @@
           <el-icon><Monitor /></el-icon>
           <span>端口管理</span>
         </el-menu-item>
+        <el-menu-item index="/openvpn">
+          <el-icon><Unlock /></el-icon>
+          <span>SSL VPN</span>
+        </el-menu-item>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
           <span>系统设置</span>
@@ -52,6 +56,12 @@
             </el-button>
           </el-tooltip>
           
+          <el-tooltip content="项目文档" placement="bottom">
+            <el-button circle tag="a" href="https://github.com/weideng365/OmniWire/wiki" target="_blank" class="github-link">
+              <el-icon><Document /></el-icon>
+            </el-button>
+          </el-tooltip>
+
           <el-tooltip content="GitHub 源码" placement="bottom">
             <el-button circle tag="a" href="https://github.com/weideng365/OmniWire" target="_blank" class="github-link">
               <el-icon><Link /></el-icon>

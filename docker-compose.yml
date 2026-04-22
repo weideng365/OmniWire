@@ -18,6 +18,7 @@ services:
       - ./data:/app/data
       - /etc/wireguard:/etc/wireguard
       - /lib/modules:/lib/modules:ro
+      - /dev/net/tun:/dev/net/tun
     environment:
       - TZ=Asia/Shanghai
     ports:

@@ -274,14 +274,14 @@ func GetPeerConfig(ctx context.Context, id int) (string, error) {
 
 	listenPort := serverConfig.ListenPort
 	allowedIPs := serverConfig.ClientAllowedIPs
-	dns := serverConfig.DNS
-	mtu := serverConfig.MTU
-	persistentKeepalive := serverConfig.PersistentKeepalive
 
 	g.Log().Infof(ctx, "[WireGuard] 生成客户端配置, Endpoint: %s:%d, AllowedIPs: %s", endpoint, listenPort, allowedIPs)
 
-	// 构建客户端配置
-	config := fmt.Sprintf(`[Interface]
+	return buildPeerConfig(peer.PrivateKey, peer.AllowedIps, serverConfig), nil
+}
+
+func buildPeerConfig(privateKey, address string, serverConfig *ConfigOutput) string {
+	return fmt.Sprintf(`[Interface]
 PrivateKey = %s
 Address = %s
 DNS = %s
@@ -292,9 +292,7 @@ PublicKey = %s
 AllowedIPs = %s
 PersistentKeepalive = %d
 Endpoint = %s:%d
-`, peer.PrivateKey, peer.AllowedIps, dns, mtu, serverConfig.PublicKey, allowedIPs, persistentKeepalive, endpoint, listenPort)
-
-	return config, nil
+`, privateKey, address, serverConfig.DNS, serverConfig.MTU, serverConfig.PublicKey, serverConfig.ClientAllowedIPs, serverConfig.PersistentKeepalive, serverConfig.EndpointAddress, serverConfig.ListenPort)
 }
 
 // GetPeers 获取客户端列表

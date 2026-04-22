@@ -387,10 +387,12 @@ const configForm = ref({
   logLevel: 'error',
   autoStart: false
 })
+const clientAllowedIPsTouched = ref(false)
 
 // VPN 网段变化时自动同步客户端路由
 watch(() => configForm.value.address, (val) => {
   if (!val) return
+  if (clientAllowedIPsTouched.value && configForm.value.clientAllowedIPs?.trim()) return
   const match = val.match(/^(\d+\.\d+\.\d+\.\d+\/\d+)$/)
   if (match) {
     // 解析 CIDR，计算网络地址
@@ -403,6 +405,13 @@ watch(() => configForm.value.address, (val) => {
     const netNum = (ipNum & maskBits) >>> 0
     const netAddr = [(netNum >>> 24) & 0xFF, (netNum >>> 16) & 0xFF, (netNum >>> 8) & 0xFF, netNum & 0xFF].join('.')
     configForm.value.clientAllowedIPs = netAddr + '/' + mask
+  }
+})
+
+watch(() => configForm.value.clientAllowedIPs, (val, oldVal) => {
+  if (oldVal === undefined) return
+  if (val !== oldVal) {
+    clientAllowedIPsTouched.value = true
   }
 })
 
@@ -453,6 +462,7 @@ const loadConfig = async () => {
   try {
     const res = await wireguardApi.config()
     if (res.data) {
+      clientAllowedIPsTouched.value = false
       configForm.value = res.data
     }
   } catch (err) { console.error(err) }
@@ -600,6 +610,7 @@ const handleSaveConfig = async () => {
     await wireguardApi.updateConfig(configForm.value)
     ElMessage.success('配置已保存')
     showConfigDialog.value = false
+    clientAllowedIPsTouched.value = false
     await loadStatus()
     await loadConfig()  // 重新加载配置确保数据同步
   } catch (err) { console.error(err) }

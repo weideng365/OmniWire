@@ -87,4 +87,19 @@ export const portApi = {
     firewallClose: (data) => request.post('/port/firewall/close', data)
 }
 
+// OpenVPN API
+export const openvpnApi = {
+    status: () => request.get('/openvpn/status'),
+    start: () => request.post('/openvpn/start'),
+    stop: () => request.post('/openvpn/stop'),
+    restart: () => request.post('/openvpn/restart'),
+    config: () => request.get('/openvpn/config'),
+    updateConfig: (data) => request.put('/openvpn/config', data),
+    users: () => request.get('/openvpn/users'),
+    createUser: (data) => request.post('/openvpn/users', data),
+    updateUser: (id, data) => request.put(`/openvpn/users/${id}`, data),
+    deleteUser: (id) => request.delete(`/openvpn/users/${id}`),
+    userConfig: (id) => request.get(`/openvpn/users/${id}/config`)
+}
+
 export default request

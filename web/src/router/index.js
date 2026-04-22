@@ -34,6 +34,18 @@ const router = createRouter({
                     meta: { title: '端口管理', icon: 'Monitor' }
                 },
                 {
+                    path: 'openvpn',
+                    name: 'openvpn',
+                    component: () => import('@/views/OpenVPN.vue'),
+                    meta: { title: 'SSL VPN', icon: 'Unlock' }
+                },
+                {
+                    path: 'openvpn-guide',
+                    name: 'openvpn-guide',
+                    component: () => import('@/views/OpenVPNGuide.vue'),
+                    meta: { title: 'OpenVPN 使用说明' }
+                },
+                {
                     path: 'settings',
                     name: 'settings',
                     component: () => import('@/views/Settings.vue'),

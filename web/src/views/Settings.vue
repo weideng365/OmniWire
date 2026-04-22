@@ -98,12 +98,16 @@
                 <el-icon><Connection /></el-icon>
               </div>
               <h1 class="app-name">OmniWire</h1>
-              <div class="app-version">Version 1.0.0</div>
-              
+              <div class="app-version">Version v1.0.0</div>
+
               <div class="feature-list">
                 <div class="feature-item">
                   <el-icon><Monitor /></el-icon>
                   <span>WireGuard 核心管理</span>
+                </div>
+                <div class="feature-item">
+                  <el-icon><Connection /></el-icon>
+                  <span>OpenVPN 安全接入</span>
                 </div>
                 <div class="feature-item">
                   <el-icon><Switch /></el-icon>
@@ -114,15 +118,15 @@
                   <span>企业级安全防护</span>
                 </div>
               </div>
-              
+
               <div class="app-links">
-                <a href="https://github.com" target="_blank" class="link-item">
+                <a href="https://github.com/weideng365/OmniWire" target="_blank" class="link-item">
                   <el-icon><Link /></el-icon>
                   GitHub Repository
                 </a>
-                <a href="https://wireguard.com" target="_blank" class="link-item">
+                <a href="https://github.com/weideng365/OmniWire/wiki" target="_blank" class="link-item">
                   <el-icon><Document /></el-icon>
-                  WireGuard Docs
+                  GitHub Wiki
                 </a>
               </div>
               
