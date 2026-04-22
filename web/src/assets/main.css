@@ -245,6 +245,59 @@ body {
   height: 36px !important;
 }
 
+/* 数字输入框 */
+.el-input-number {
+  --el-input-number-bg-color: var(--bg-input);
+}
+
+.el-input-number .el-input__wrapper {
+  padding-left: 12px !important;
+  padding-right: 40px !important;
+}
+
+.el-input-number--controls-right .el-input-number__increase,
+.el-input-number--controls-right .el-input-number__decrease {
+  background-color: transparent !important;
+  border-left: 1px solid var(--border-color) !important;
+  border-bottom: none !important;
+  color: var(--text-muted) !important;
+  transition: all 0.2s ease !important;
+  width: 36px !important;
+}
+
+.el-input-number--controls-right .el-input-number__decrease {
+  border-top: 1px solid var(--border-color) !important;
+}
+
+.el-input-number--controls-right .el-input-number__increase:hover,
+.el-input-number--controls-right .el-input-number__decrease:hover {
+  color: var(--primary-color) !important;
+  background-color: rgba(var(--primary-rgb), 0.08) !important;
+}
+
+.el-input-number:not(.el-input-number--controls-right) .el-input-number__increase,
+.el-input-number:not(.el-input-number--controls-right) .el-input-number__decrease {
+  background-color: var(--bg-hover) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-muted) !important;
+  border-radius: var(--radius-md) !important;
+  transition: all 0.2s ease !important;
+}
+
+.el-input-number:not(.el-input-number--controls-right) .el-input-number__increase:hover,
+.el-input-number:not(.el-input-number--controls-right) .el-input-number__decrease:hover {
+  color: var(--primary-color) !important;
+  background-color: rgba(var(--primary-rgb), 0.1) !important;
+  border-color: var(--primary-color) !important;
+}
+
+.el-input-number.is-disabled .el-input-number__increase,
+.el-input-number.is-disabled .el-input-number__decrease {
+  color: var(--text-muted) !important;
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
 /* 弹窗优化 - 解决“紧贴标题”问题 */
 .el-dialog {
   background-color: var(--bg-card) !important;

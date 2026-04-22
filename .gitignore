@@ -23,7 +23,9 @@ temp.yaml
 **/uploads/**
 **/node_modules/**
 **/dist/**
-**/temp/**server/data/
+**/temp/**
+server/data/
+server/omniwire
 **/*.db
 # embed public 目录内容由 CI 生成，忽略但保留占位文件
 server/internal/packed/public/*

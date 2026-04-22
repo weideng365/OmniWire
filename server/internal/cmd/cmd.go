@@ -15,11 +15,13 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"omniwire/internal/controller/forward"
+	"omniwire/internal/controller/openvpn"
 	"omniwire/internal/controller/port"
 	"omniwire/internal/controller/system"
 	"omniwire/internal/controller/wireguard"
 	"omniwire/internal/packed"
 	forwardService "omniwire/internal/service/forward"
+	openvpnService "omniwire/internal/service/openvpn"
 	wireguardService "omniwire/internal/service/wireguard"
 )
 
@@ -68,6 +70,9 @@ var (
 			// 初始化 WireGuard 服务（根据配置自动启动）
 			wireguardService.InitWireGuard(ctx)
 
+			// 初始化 OpenVPN 服务（根据配置自动启动）
+			openvpnService.InitOpenVPN(ctx)
+
 			// API 路由组
 			s.Group("/api/v1", func(group *ghttp.RouterGroup) {
 				group.Middleware(ghttp.MiddlewareHandlerResponse)
@@ -75,8 +80,9 @@ var (
 				// JWT 鉴权中间件（白名单放行）
 				group.Middleware(func(r *ghttp.Request) {
 					path := r.URL.Path
-					// 白名单：登录和健康检查不需要鉴权
-					if path == "/api/v1/system/login" || path == "/api/v1/system/health" {
+					// 白名单：登录、健康检查、OpenVPN 认证回调不需要鉴权
+					if path == "/api/v1/system/login" || path == "/api/v1/system/health" ||
+						path == "/api/v1/openvpn/auth" || path == "/api/v1/openvpn/connect" || path == "/api/v1/openvpn/disconnect" {
 						r.Middleware.Next()
 						return
 					}
@@ -123,6 +129,11 @@ var (
 				// 端口管理接口
 				group.Group("/port", func(group *ghttp.RouterGroup) {
 					group.Bind(port.NewV1())
+				})
+
+				// OpenVPN 管理接口
+				group.Group("/openvpn", func(group *ghttp.RouterGroup) {
+					group.Bind(openvpn.NewV1())
 				})
 			})
 
@@ -236,5 +247,15 @@ func printRoutes() {
 	fmt.Println("    POST /api/v1/port/scan         - 扫描端口")
 	fmt.Println("    GET  /api/v1/port/check/:port  - 检查端口占用")
 	fmt.Println("    GET  /api/v1/port/listen       - 获取监听端口")
+	fmt.Println("")
+	fmt.Println("  OpenVPN 管理:")
+	fmt.Println("    GET  /api/v1/openvpn/status    - 获取服务状态")
+	fmt.Println("    POST /api/v1/openvpn/start     - 启动服务")
+	fmt.Println("    POST /api/v1/openvpn/stop      - 停止服务")
+	fmt.Println("    POST /api/v1/openvpn/restart   - 重启服务")
+	fmt.Println("    GET  /api/v1/openvpn/config    - 获取配置")
+	fmt.Println("    PUT  /api/v1/openvpn/config    - 更新配置")
+	fmt.Println("    GET  /api/v1/openvpn/users     - 获取用户列表")
+	fmt.Println("    POST /api/v1/openvpn/users     - 创建用户")
 	fmt.Println("")
 }

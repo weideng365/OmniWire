@@ -4,14 +4,14 @@
 
 ![OmniWire Logo](https://img.shields.io/badge/OmniWire-Network%20Security%20Gateway-blue?style=for-the-badge&logo=wireguard)
 
-**WireGuard Server & Network Port Forwarding Management System Built with GoFrame**
+**WireGuard / OpenVPN Server & Network Port Forwarding Management System Built with GoFrame**
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat-square&logo=go)](https://go.dev/)
 [![GoFrame](https://img.shields.io/badge/GoFrame-2.x-green?style=flat-square)](https://goframe.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.x-4FC08D?style=flat-square&logo=vue.js)](https://vuejs.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
-English | [简体中文](README.md)
+English | [简体中文](README.md) | [Documentation(Wiki)](https://github.com/weideng365/OmniWire/wiki)
 
 </div>
 
@@ -19,7 +19,7 @@ English | [简体中文](README.md)
 
 ## Overview
 
-**OmniWire** is a powerful network security gateway system that integrates WireGuard VPN server management, TCP/UDP port forwarding, and intelligent port management. Built with GoFrame as the backend framework and Vue 3 as the frontend framework, it provides a modern web management interface.
+**OmniWire** is a powerful network security gateway system that integrates WireGuard VPN server management, OpenVPN SSL VPN management, TCP/UDP port forwarding, and intelligent port management. Built with GoFrame as the backend framework and Vue 3 as the frontend framework, it provides a modern web management interface.
 
 ## Core Tech Stack
 
@@ -53,6 +53,7 @@ English | [简体中文](README.md)
 | Technology | Description |
 |------------|-------------|
 | [WireGuard](https://www.wireguard.com/) | Modern, high-performance VPN protocol |
+| [OpenVPN](https://openvpn.net/) | Mature and stable SSL VPN protocol |
 | TCP/UDP | Transport layer protocols for port forwarding |
 
 ## Completed Features
@@ -68,6 +69,20 @@ English | [简体中文](README.md)
 | ✅ Traffic Statistics | Track upload/download traffic per client |
 | ✅ One-click WireGuard Install | Auto-detect and install WireGuard kernel module |
 | ✅ Service Start/Stop Control | One-click start/stop/restart WireGuard service |
+
+### OpenVPN SSL VPN Server
+| Feature | Description |
+|---------|-------------|
+| ✅ Server Configuration | Manage OpenVPN protocol, port, subnet, DNS, routing mode |
+| ✅ User Account Management | Add/Edit/Delete users with bcrypt password encryption |
+| ✅ Auto Certificate Generation | Auto-generate CA and user certificates (ECDSA) |
+| ✅ Client Config Download | One-click download .ovpn config files |
+| ✅ Connection Monitoring | Real-time user online status and connection info |
+| ✅ Traffic Statistics | Track upload/download traffic per user |
+| ✅ Routing Modes | Full-tunnel and split-tunnel with CIDR-based route filtering |
+| ✅ Static IP Assignment | Assign fixed VPN IP per user |
+| ✅ Service Start/Stop Control | One-click start/stop/restart OpenVPN service |
+| ✅ Setup Guide | Built-in multi-platform client setup guide |
 
 ### TCP/UDP Port Forwarding
 | Feature | Description |
@@ -111,9 +126,13 @@ English | [简体中文](README.md)
 ┌─────────────────────────────────────────────────────────────┐
 │                     Vue 3 Frontend                          │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │  Dashboard  │  │  WireGuard  │  │  Port Forward       │  │
-│  │             │  │  Management │  │  Management         │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+│  │  Dashboard  │  │  WireGuard  │  │  OpenVPN   │  │
+│  │             │  │  Management │  │  Management│  │
+│  └─────────────┘  └─────────────┘  └────────────┘  │
+│  ┌─────────────┐  ┌─────────────────────────────┐   │
+│  │  Port       │  │  Port Forward               │   │
+│  │  Management │  │  Management                 │   │
+│  └─────────────┘  └─────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
                               │ Axios + Bearer Token
                               ▼
@@ -130,9 +149,12 @@ English | [简体中文](README.md)
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │              Core Services                           │    │
 │  │  ┌───────────┐ ┌───────────┐ ┌───────────────────┐  │    │
-│  │  │ WireGuard │ │   TCP/UDP │ │   Port            │  │    │
-│  │  │  Service  │ │  Forward  │ │   Manager         │  │    │
+│  │  │ WireGuard │ │  OpenVPN  │ │   TCP/UDP         │  │    │
+│  │  │  Service  │ │  Service  │ │   Forward         │  │    │
 │  │  └───────────┘ └───────────┘ └───────────────────┘  │    │
+│  │  ┌───────────────────────────────────────────────┐  │    │
+│  │  │              Port Manager                     │  │    │
+│  │  └───────────────────────────────────────────────┘  │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -198,6 +220,7 @@ docker-compose up -d
 Exposed ports:
 - `8110` — Web management interface
 - `51820/udp` — WireGuard VPN
+- `1194/udp` `1194/tcp` — OpenVPN
 
 ### Production Build
 
@@ -227,6 +250,14 @@ cd server && CGO_ENABLED=1 go build -o omniwire main.go
 2. Configure server public IP (Endpoint), listen port, subnet, etc. in "Configuration"
 3. Click "Add Peer" to create a peer; the system auto-assigns IP and generates key pairs
 4. Import config to client devices via "Download Config" or "Scan QR Code"
+
+### OpenVPN Management
+
+1. Go to the "OpenVPN" page; click "Start" to enable the service on first use
+2. Configure protocol (TCP/UDP), listen port, VPN subnet, DNS, routing mode in "Configuration"
+3. Click "Add User" to create an account; the system auto-generates certificates and assigns IP
+4. Download the .ovpn config file and import it into the client
+5. Supports full-tunnel and split-tunnel routing modes; split-tunnel allows specifying which subnets route through VPN
 
 ### Port Forwarding
 
@@ -291,6 +322,17 @@ security:
 | PUT | `/api/v1/wireguard/config` | Update config | Yes |
 | GET | `/api/v1/wireguard/peers` | List peers | Yes |
 | POST | `/api/v1/wireguard/peers` | Create peer | Yes |
+| GET | `/api/v1/openvpn/status` | OpenVPN status | Yes |
+| POST | `/api/v1/openvpn/start` | Start OpenVPN | Yes |
+| POST | `/api/v1/openvpn/stop` | Stop OpenVPN | Yes |
+| POST | `/api/v1/openvpn/restart` | Restart OpenVPN | Yes |
+| GET | `/api/v1/openvpn/config` | Get OpenVPN config | Yes |
+| PUT | `/api/v1/openvpn/config` | Update OpenVPN config | Yes |
+| GET | `/api/v1/openvpn/users` | List users | Yes |
+| POST | `/api/v1/openvpn/users` | Create user | Yes |
+| PUT | `/api/v1/openvpn/users/{id}` | Update user | Yes |
+| DELETE | `/api/v1/openvpn/users/{id}` | Delete user | Yes |
+| GET | `/api/v1/openvpn/users/{id}/config` | Download user config | Yes |
 | GET | `/api/v1/forward` | List forward rules | Yes |
 | POST | `/api/v1/forward` | Create forward rule | Yes |
 | PUT | `/api/v1/forward/:id` | Update forward rule | Yes |
@@ -333,8 +375,9 @@ security:
 When deploying on cloud servers (Aliyun, Tencent Cloud, AWS, GCP, etc.), you need to open ports in the **Security Group** in addition to the system firewall (iptables/firewalld):
 
 1. **Web Management Port** — Open TCP `8110` (or custom port) for management interface access
-2. **WireGuard Port** — Open UDP `51820` (or custom port) for VPN connections
-3. **Port Forwarding Ports** — Open corresponding TCP/UDP ports based on your forwarding rules
+2. **WireGuard Port** — Open UDP `51820` (or custom port) for WireGuard VPN connections
+3. **OpenVPN Port** — Open UDP/TCP `1194` (or custom port) for OpenVPN connections
+4. **Port Forwarding Ports** — Open corresponding TCP/UDP ports based on your forwarding rules
 4. **Important Notes**:
    - Security Group rules and system firewall are two independent layers; both must allow traffic
    - Only open necessary ports; avoid using `0.0.0.0/0` open-all policies
@@ -366,6 +409,7 @@ OmniWire/
 │   │   ├── service/         # Business logic layer
 │   │   │   ├── wgserver/    # WireGuard server lifecycle management
 │   │   │   ├── wireguard/   # WireGuard business logic
+│   │   │   ├── openvpn/     # OpenVPN service management (process, certs, auth)
 │   │   │   ├── forward/     # TCP/UDP port forwarding engine
 │   │   │   └── port/        # Port scanning and monitoring
 │   │   ├── model/           # Data models
