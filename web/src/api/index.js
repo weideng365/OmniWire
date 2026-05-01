@@ -24,7 +24,12 @@ request.interceptors.request.use(
 // 响应拦截器
 request.interceptors.response.use(
     response => {
-        return response.data
+        const res = response.data
+        if (res.code !== undefined && res.code !== 0) {
+            ElMessage.error(res.message || '请求失败')
+            return Promise.reject(new Error(res.message || '请求失败'))
+        }
+        return res
     },
     error => {
         const message = error.response?.data?.message || error.message || '请求失败'
