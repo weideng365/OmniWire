@@ -134,7 +134,7 @@ type UserUpdateReq struct {
 	g.Meta   `path:"/users/{id}" method:"put" tags:"OpenVPN" summary:"更新用户"`
 	Id       int    `json:"id" in:"path" v:"required|min:1#ID必填|ID无效"`
 	Password string `json:"password"`
-	Enabled  bool   `json:"enabled"`
+	Enabled  *bool  `json:"enabled"`
 }
 
 // UserUpdateRes 更新用户响应
