@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template"
@@ -211,7 +212,7 @@ func GetUsers(ctx context.Context) ([]*UserInfo, error) {
 			Enabled: row["enabled"].Int(), Online: isOnline,
 			IP: ip, ConnectedAt: connectedAt,
 			CreatedAt: row["created_at"].String(),
-			RxBytes: rxBytes, TxBytes: txBytes,
+			RxBytes:   rxBytes, TxBytes: txBytes,
 		})
 	}
 	return users, nil
@@ -403,25 +404,29 @@ func ensureConfig(ctx context.Context) error {
 	os.WriteFile(filepath.Join(absDir, "server.crt"), serverCert, 0600)
 	os.WriteFile(filepath.Join(absDir, "server.key"), serverKey, 0600)
 
+	// 回调 API 基地址：从主服务监听地址解析端口，避免 Docker(8080)/开发(8110) 不一致
+	callbackBase := callbackBaseURL(ctx)
+
 	// auth 脚本（via-file：$1 为临时文件，第一行用户名，第二行密码）
+	// 使用 curl --data-urlencode 自动 URL 编码，避免用户名/密码包含 " \ $ 时
+	// 拼接 JSON 出现注入或 JSON 格式破坏导致的拒绝服务。
 	authScriptContent := "#!/bin/sh\n" +
 		"USERNAME=$(sed -n '1p' \"$1\")\n" +
 		"PASSWORD=$(sed -n '2p' \"$1\")\n" +
-		"curl -sf -X POST http://127.0.0.1:8110/api/v1/openvpn/auth" +
-		" -H 'Content-Type: application/json'" +
-		" -d \"{\\\"username\\\":\\\"$USERNAME\\\",\\\"password\\\":\\\"$PASSWORD\\\"}\" | grep -q '\"success\":true'\n"
+		"curl -sf -X POST " + callbackBase + "/api/v1/openvpn/auth" +
+		" --data-urlencode \"username=$USERNAME\"" +
+		" --data-urlencode \"password=$PASSWORD\" | grep -q '\"success\":true'\n"
 	os.WriteFile(filepath.Join(absDir, authScript), []byte(authScriptContent), 0700)
 
 	// client-connect 脚本
-	connectScript := "#!/bin/sh\ncurl -sf -X POST http://127.0.0.1:8110/api/v1/openvpn/connect" +
-		" -H 'Content-Type: application/json'" +
-		" -d \"{\\\"username\\\":\\\"$common_name\\\",\\\"ip\\\":\\\"$ifconfig_pool_remote_ip\\\"}\" || true\n"
+	connectScript := "#!/bin/sh\ncurl -sf -X POST " + callbackBase + "/api/v1/openvpn/connect" +
+		" --data-urlencode \"username=$common_name\"" +
+		" --data-urlencode \"ip=$ifconfig_pool_remote_ip\" || true\n"
 	os.WriteFile(filepath.Join(absDir, "client-connect.sh"), []byte(connectScript), 0700)
 
 	// client-disconnect 脚本
-	disconnectScript := "#!/bin/sh\ncurl -sf -X POST http://127.0.0.1:8110/api/v1/openvpn/disconnect" +
-		" -H 'Content-Type: application/json'" +
-		" -d \"{\\\"username\\\":\\\"$common_name\\\"}\" || true\n"
+	disconnectScript := "#!/bin/sh\ncurl -sf -X POST " + callbackBase + "/api/v1/openvpn/disconnect" +
+		" --data-urlencode \"username=$common_name\" || true\n"
 	os.WriteFile(filepath.Join(absDir, "client-disconnect.sh"), []byte(disconnectScript), 0700)
 
 	routeLines := "push \"redirect-gateway def1 bypass-dhcp\"\n"
@@ -437,7 +442,10 @@ func ensureConfig(ctx context.Context) error {
 	// 生成 CCD 目录和每用户固定 IP 文件
 	ccdDir := filepath.Join(absDir, "ccd")
 	os.MkdirAll(ccdDir, 0700)
-	_, ipNet, _ := net.ParseCIDR(config.Subnet)
+	_, ipNet, err := net.ParseCIDR(config.Subnet)
+	if err != nil {
+		return fmt.Errorf("解析子网失败: %v", err)
+	}
 	subnetMask := fmt.Sprintf("%d.%d.%d.%d", ipNet.Mask[0], ipNet.Mask[1], ipNet.Mask[2], ipNet.Mask[3])
 	if users, err := g.DB().Model("openvpn_user").Fields("username,static_ip").All(); err == nil {
 		for _, u := range users {
@@ -448,20 +456,33 @@ func ensureConfig(ctx context.Context) error {
 		}
 	}
 
-	network := strings.Split(config.Subnet, "/")[0]
+	network := ipNet.IP.String()
 	serverConf := fmt.Sprintf("port %d\nproto %s\ndev tun\nca %s/ca.crt\ncert %s/server.crt\nkey %s/server.key\n"+
 		"dh none\ntopology subnet\n"+
-		"server %s 255.255.255.0\nclient-config-dir %s\n%spush \"dhcp-option DNS %s\"\n"+
+		"server %s %s\nclient-config-dir %s\n%spush \"dhcp-option DNS %s\"\n"+
 		"keepalive 10 120\ncipher AES-256-GCM\nauth SHA256\npersist-key\npersist-tun\n"+
 		"status %s/openvpn-status.log 5\nstatus-version 2\nverb 3\nscript-security 2\n"+
 		"auth-user-pass-verify %s/%s via-file\nusername-as-common-name\n"+
 		"client-connect %s/client-connect.sh\nclient-disconnect %s/client-disconnect.sh\n",
 		config.Port, config.Protocol,
-		absDir, absDir, absDir, network, ccdDir, routeLines, config.DNS,
+		absDir, absDir, absDir, network, subnetMask, ccdDir, routeLines, config.DNS,
 		absDir, absDir, authScript,
 		absDir, absDir,
 	)
 	return os.WriteFile(filepath.Join(absDir, configFile), []byte(serverConf), 0600)
+}
+
+// callbackBaseURL 根据主服务监听地址，构造 OpenVPN 脚本回调 OmniWire API 的基地址。
+// 总是回环到 127.0.0.1，端口取自 server.address 配置（默认 8110）。
+func callbackBaseURL(ctx context.Context) string {
+	addr := g.Cfg().MustGet(ctx, "server.address", ":8110").String()
+	port := "8110"
+	if idx := strings.LastIndex(addr, ":"); idx >= 0 {
+		if p, err := strconv.Atoi(addr[idx+1:]); err == nil && p > 0 {
+			port = strconv.Itoa(p)
+		}
+	}
+	return "http://127.0.0.1:" + port
 }
 
 func boolToInt(b bool) int {
@@ -510,9 +531,9 @@ func parseCIDRRoutes(routes string) string {
 }
 
 type clientStat struct {
-	IP       string
-	RxBytes  int64
-	TxBytes  int64
+	IP      string
+	RxBytes int64
+	TxBytes int64
 }
 
 // parseStatusLog 解析 openvpn-status.log，返回 username->clientStat 映射

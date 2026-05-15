@@ -22,14 +22,16 @@ npm install --silent
 npm run build
 echo "  前端构建完成"
 
-# 2. 打包静态资源
+# 2. 同步前端产物到 embed 目录
 echo ""
-echo "[2/3] 打包静态资源..."
+echo "[2/3] 同步静态资源到 embed 目录..."
 cd "$PROJECT_ROOT/server"
-echo "y" | gf pack resource/public,manifest/config internal/packed/packed.go -n packed -k
-echo "  静态资源已打包"
+rm -rf internal/packed/public
+mkdir -p internal/packed/public
+cp -r resource/public/. internal/packed/public/
+echo "  静态资源已同步到 internal/packed/public"
 
-# 3. 编译 Go 程序
+# 3. 编译 Go 程序（启用 embed build tag）
 echo ""
 echo "[3/3] 编译 Go 程序..."
 cd "$PROJECT_ROOT/server"
@@ -39,19 +41,19 @@ mkdir -p "$PROJECT_ROOT/dist"
 
 build_linux() {
     echo "  编译 Linux (amd64)..."
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o "$PROJECT_ROOT/dist/omniwire-linux-amd64" main.go
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags embed -ldflags="-s -w" -o "$PROJECT_ROOT/dist/omniwire-linux-amd64" main.go
     echo "  输出: dist/omniwire-linux-amd64"
 }
 
 build_windows() {
     echo "  编译 Windows (amd64)..."
-    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o "$PROJECT_ROOT/dist/omniwire-windows-amd64.exe" main.go
+    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags embed -ldflags="-s -w" -o "$PROJECT_ROOT/dist/omniwire-windows-amd64.exe" main.go
     echo "  输出: dist/omniwire-windows-amd64.exe"
 }
 
 build_current() {
     echo "  编译当前平台..."
-    go build -ldflags="-s -w" -o "$PROJECT_ROOT/dist/omniwire" main.go
+    go build -tags embed -ldflags="-s -w" -o "$PROJECT_ROOT/dist/omniwire" main.go
     echo "  输出: dist/omniwire"
 }
 

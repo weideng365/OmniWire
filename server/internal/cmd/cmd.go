@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"mime"
+	"net"
 	"net/http"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -80,10 +83,20 @@ var (
 				// JWT 鉴权中间件（白名单放行）
 				group.Middleware(func(r *ghttp.Request) {
 					path := r.URL.Path
-					// 白名单：登录、健康检查、OpenVPN 认证回调不需要鉴权
-					if path == "/api/v1/system/login" || path == "/api/v1/system/health" ||
-						path == "/api/v1/openvpn/auth" || path == "/api/v1/openvpn/connect" || path == "/api/v1/openvpn/disconnect" {
+					// 白名单：登录、健康检查无需鉴权
+					if path == "/api/v1/system/login" || path == "/api/v1/system/health" {
 						r.Middleware.Next()
+						return
+					}
+					// OpenVPN 回调（auth/connect/disconnect）由 OpenVPN 守护进程在本机执行 up/down 脚本调用，
+					// 仅允许 loopback 源地址访问，防止外网伪造身份认证。
+					if path == "/api/v1/openvpn/auth" || path == "/api/v1/openvpn/connect" || path == "/api/v1/openvpn/disconnect" {
+						if isLoopbackRemote(r) {
+							r.Middleware.Next()
+							return
+						}
+						r.Response.WriteStatus(403)
+						r.Response.WriteJsonExit(g.Map{"code": 403, "message": "OpenVPN 回调仅允许本机访问"})
 						return
 					}
 
@@ -158,17 +171,7 @@ var (
 						}
 						path = "index.html"
 					}
-					mime := http.DetectContentType(data)
-					if strings.HasSuffix(path, ".js") {
-						mime = "application/javascript"
-					} else if strings.HasSuffix(path, ".css") {
-						mime = "text/css"
-					} else if strings.HasSuffix(path, ".html") {
-						mime = "text/html; charset=utf-8"
-					} else if strings.HasSuffix(path, ".svg") {
-						mime = "image/svg+xml"
-					}
-					r.Response.Header().Set("Content-Type", mime)
+					r.Response.Header().Set("Content-Type", detectMimeType(path, data))
 					r.Response.Write(data)
 				})
 			}
@@ -189,6 +192,50 @@ var (
 		},
 	}
 )
+
+// isLoopbackRemote 判断请求源是否来自本机回环地址。
+// 用于限制 OpenVPN up/down 脚本回调，仅允许 OpenVPN 守护进程在本机调用。
+func isLoopbackRemote(r *ghttp.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// detectMimeType 按文件扩展名推断 Content-Type；未知类型回退到内容嗅探。
+func detectMimeType(path string, data []byte) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".js", ".mjs":
+		return "application/javascript; charset=utf-8"
+	case ".css":
+		return "text/css; charset=utf-8"
+	case ".html", ".htm":
+		return "text/html; charset=utf-8"
+	case ".json":
+		return "application/json; charset=utf-8"
+	case ".svg":
+		return "image/svg+xml"
+	case ".woff":
+		return "font/woff"
+	case ".woff2":
+		return "font/woff2"
+	case ".ttf":
+		return "font/ttf"
+	case ".eot":
+		return "application/vnd.ms-fontobject"
+	case ".ico":
+		return "image/x-icon"
+	case ".map":
+		return "application/json; charset=utf-8"
+	}
+	if t := mime.TypeByExtension(ext); t != "" {
+		return t
+	}
+	return http.DetectContentType(data)
+}
 
 // printBanner 打印启动横幅
 func printBanner() {

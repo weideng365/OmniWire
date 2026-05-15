@@ -17,19 +17,15 @@ call npm install
 call npm run build
 cd ..\server
 
-REM 2. 打包静态资源到 Go 代码
+REM 2. 同步前端产物到 embed 目录
 echo.
-echo [2/3] 打包静态资源...
-where gf >nul 2>nul
-if %ERRORLEVEL% EQU 0 (
-    gf pack resource/public internal/packed/packed.go -n packed
-    echo   静态资源已打包到 internal/packed/packed.go
-) else (
-    echo   警告: 未安装 gf 命令行工具，跳过资源打包
-    echo   安装方法: go install github.com/gogf/gf/cmd/gf/v2@latest
-)
+echo [2/3] 同步静态资源到 embed 目录...
+if exist "internal\packed\public" rmdir /S /Q "internal\packed\public"
+mkdir "internal\packed\public"
+xcopy /E /I /Y "resource\public\*" "internal\packed\public\" >nul
+echo   静态资源已同步到 internal\packed\public
 
-REM 3. 编译 Go 程序
+REM 3. 编译 Go 程序（启用 embed build tag）
 echo.
 echo [3/3] 编译 Go 程序...
 
@@ -38,12 +34,12 @@ if "%1"=="linux" (
     set CGO_ENABLED=1
     set GOOS=linux
     set GOARCH=amd64
-    go build -o omniwire main.go
+    go build -tags embed -o omniwire main.go
     echo   输出文件: omniwire
 ) else (
     echo   目标平台: Windows ^(amd64^)
     set CGO_ENABLED=1
-    go build -o omniwire.exe main.go
+    go build -tags embed -o omniwire.exe main.go
     echo   输出文件: omniwire.exe
 )
 
