@@ -18,33 +18,30 @@ npm install
 npm run build
 cd ../server
 
-# 2. 打包静态资源到 Go 代码
+# 2. 同步前端产物到 embed 目录
 echo ""
-echo "[2/3] 打包静态资源..."
-if command -v gf &> /dev/null; then
-    gf pack resource/public internal/packed/packed.go -n packed
-    echo "  静态资源已打包到 internal/packed/packed.go"
-else
-    echo "  警告: 未安装 gf 命令行工具，跳过资源打包"
-    echo "  安装方法: go install github.com/gogf/gf/cmd/gf/v2@latest"
-fi
+echo "[2/3] 同步静态资源到 embed 目录..."
+rm -rf internal/packed/public
+mkdir -p internal/packed/public
+cp -r resource/public/. internal/packed/public/
+echo "  静态资源已同步到 internal/packed/public"
 
-# 3. 编译 Go 程序
+# 3. 编译 Go 程序（启用 embed build tag）
 echo ""
 echo "[3/3] 编译 Go 程序..."
 
 # 检测目标平台
 if [ "$1" == "linux" ]; then
     echo "  目标平台: Linux (amd64)"
-    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o omniwire main.go
+    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags embed -o omniwire main.go
     echo "  输出文件: omniwire"
 elif [ "$1" == "windows" ]; then
     echo "  目标平台: Windows (amd64)"
-    CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -o omniwire.exe main.go
+    CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -tags embed -o omniwire.exe main.go
     echo "  输出文件: omniwire.exe"
 else
     echo "  目标平台: 当前系统"
-    go build -o omniwire main.go
+    go build -tags embed -o omniwire main.go
     echo "  输出文件: omniwire"
 fi
 

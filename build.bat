@@ -24,14 +24,16 @@ call npm install --silent
 call npm run build
 echo   前端构建完成
 
-REM 2. 打包静态资源
+REM 2. 同步前端产物到 embed 目录
 echo.
-echo [2/3] 打包静态资源...
+echo [2/3] 同步静态资源到 embed 目录...
 cd "%PROJECT_ROOT%\server"
-echo y | gf pack resource/public,manifest/config internal/packed/packed.go -n packed -k
-echo   静态资源已打包
+if exist "internal\packed\public" rmdir /S /Q "internal\packed\public"
+mkdir "internal\packed\public"
+xcopy /E /I /Y "resource\public\*" "internal\packed\public\" >nul
+echo   静态资源已同步到 internal\packed\public
 
-REM 3. 编译 Go 程序
+REM 3. 编译 Go 程序（启用 embed build tag）
 echo.
 echo [3/3] 编译 Go 程序...
 cd "%PROJECT_ROOT%\server"
@@ -44,32 +46,32 @@ if "%TARGET%"=="linux" (
     set CGO_ENABLED=0
     set GOOS=linux
     set GOARCH=amd64
-    go build -ldflags="-s -w" -o "%PROJECT_ROOT%\dist\omniwire-linux-amd64" main.go
+    go build -tags embed -ldflags="-s -w" -o "%PROJECT_ROOT%\dist\omniwire-linux-amd64" main.go
     echo   输出: dist\omniwire-linux-amd64
 ) else if "%TARGET%"=="windows" (
     echo   编译 Windows ^(amd64^)...
     set CGO_ENABLED=0
     set GOOS=windows
     set GOARCH=amd64
-    go build -ldflags="-s -w" -o "%PROJECT_ROOT%\dist\omniwire-windows-amd64.exe" main.go
+    go build -tags embed -ldflags="-s -w" -o "%PROJECT_ROOT%\dist\omniwire-windows-amd64.exe" main.go
     echo   输出: dist\omniwire-windows-amd64.exe
 ) else if "%TARGET%"=="all" (
     echo   编译 Linux ^(amd64^)...
     set CGO_ENABLED=0
     set GOOS=linux
     set GOARCH=amd64
-    go build -ldflags="-s -w" -o "%PROJECT_ROOT%\dist\omniwire-linux-amd64" main.go
+    go build -tags embed -ldflags="-s -w" -o "%PROJECT_ROOT%\dist\omniwire-linux-amd64" main.go
     echo   输出: dist\omniwire-linux-amd64
 
     echo   编译 Windows ^(amd64^)...
     set CGO_ENABLED=0
     set GOOS=windows
     set GOARCH=amd64
-    go build -ldflags="-s -w" -o "%PROJECT_ROOT%\dist\omniwire-windows-amd64.exe" main.go
+    go build -tags embed -ldflags="-s -w" -o "%PROJECT_ROOT%\dist\omniwire-windows-amd64.exe" main.go
     echo   输出: dist\omniwire-windows-amd64.exe
 ) else (
     echo   编译当前平台...
-    go build -ldflags="-s -w" -o "%PROJECT_ROOT%\dist\omniwire.exe" main.go
+    go build -tags embed -ldflags="-s -w" -o "%PROJECT_ROOT%\dist\omniwire.exe" main.go
     echo   输出: dist\omniwire.exe
 )
 
