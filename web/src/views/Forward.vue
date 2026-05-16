@@ -142,13 +142,13 @@
         <el-divider content-position="left">转发目标</el-divider>
         
         <el-row :gutter="20">
-          <el-col :span="16">
+          <el-col :span="14">
             <el-form-item label="目标地址" required>
               <el-input v-model="ruleForm.targetAddr" placeholder="例如: 192.168.1.100" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item label="目标端口" required label-width="70px">
+          <el-col :span="10">
+            <el-form-item label="目标端口" required>
               <el-input-number v-model="ruleForm.targetPort" :min="1" :max="65535" style="width: 100%" controls-position="right" />
             </el-form-item>
           </el-col>

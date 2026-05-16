@@ -1,6 +1,7 @@
 package openvpn
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -31,9 +32,11 @@ var (
 )
 
 const (
-	ovpnDir    = "./data/openvpn"
-	configFile = "server.conf"
-	authScript = "auth.sh"
+	ovpnDir        = "./data/openvpn"
+	configFile     = "server.conf"
+	authScript     = "auth.sh"
+	managementHost = "127.0.0.1"
+	managementPort = 7505
 )
 
 type StatusInfo struct {
@@ -248,8 +251,8 @@ func CreateUser(ctx context.Context, username, password string) (*UserInfo, erro
 	return &UserInfo{Id: int(id), Username: username, Enabled: 1}, nil
 }
 
-func UpdateUser(ctx context.Context, id int, password string, enabled bool) error {
-	data := g.Map{"enabled": boolToInt(enabled)}
+func UpdateUser(ctx context.Context, id int, password string, enabled *bool) error {
+	data := g.Map{}
 	if password != "" {
 		hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		if err != nil {
@@ -257,8 +260,34 @@ func UpdateUser(ctx context.Context, id int, password string, enabled bool) erro
 		}
 		data["password"] = string(hashed)
 	}
+	if enabled != nil {
+		data["enabled"] = boolToInt(*enabled)
+	}
+	if len(data) == 0 {
+		return nil
+	}
 	_, err := g.DB().Model("openvpn_user").Where("id", id).Update(data)
-	return err
+	if err != nil {
+		return err
+	}
+	if enabled != nil && !*enabled {
+		row, err := g.DB().Model("openvpn_user").Fields("username").Where("id", id).One()
+		if err != nil || row.IsEmpty() {
+			return err
+		}
+		username := row["username"].String()
+		if err := killClient(ctx, username); err != nil {
+			g.Log().Warningf(ctx, "[OpenVPN] 踢下线用户 %s 失败: %v", username, err)
+			if _, online := parseStatusLog()[username]; online {
+				g.Log().Warningf(ctx, "[OpenVPN] 管理接口不可用，重启服务以断开禁用用户: %s", username)
+				if restartErr := Restart(ctx); restartErr != nil {
+					return fmt.Errorf("用户已禁用，但断开在线连接失败: %v", restartErr)
+				}
+			}
+		}
+		Disconnect(ctx, username)
+	}
+	return nil
 }
 
 func DeleteUser(ctx context.Context, id int) error {
@@ -461,12 +490,12 @@ func ensureConfig(ctx context.Context) error {
 		"dh none\ntopology subnet\n"+
 		"server %s %s\nclient-config-dir %s\n%spush \"dhcp-option DNS %s\"\n"+
 		"keepalive 10 120\ncipher AES-256-GCM\nauth SHA256\npersist-key\npersist-tun\n"+
-		"status %s/openvpn-status.log 5\nstatus-version 2\nverb 3\nscript-security 2\n"+
+		"status %s/openvpn-status.log 5\nstatus-version 2\nmanagement %s %d\nverb 3\nscript-security 2\n"+
 		"auth-user-pass-verify %s/%s via-file\nusername-as-common-name\n"+
 		"client-connect %s/client-connect.sh\nclient-disconnect %s/client-disconnect.sh\n",
 		config.Port, config.Protocol,
 		absDir, absDir, absDir, network, subnetMask, ccdDir, routeLines, config.DNS,
-		absDir, absDir, authScript,
+		absDir, managementHost, managementPort, absDir, authScript,
 		absDir, absDir,
 	)
 	return os.WriteFile(filepath.Join(absDir, configFile), []byte(serverConf), 0600)
@@ -483,6 +512,33 @@ func callbackBaseURL(ctx context.Context) string {
 		}
 	}
 	return "http://127.0.0.1:" + port
+}
+
+func killClient(ctx context.Context, username string) error {
+	if strings.ContainsAny(username, "\r\n") {
+		return fmt.Errorf("用户名包含非法字符")
+	}
+	ovpnMutex.Lock()
+	running := ovpnProcess != nil && ovpnProcess.Process != nil
+	ovpnMutex.Unlock()
+	if !running {
+		return nil
+	}
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", managementHost, managementPort), 2*time.Second)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		return err
+	}
+	reader := bufio.NewReader(conn)
+	_, _ = reader.ReadString('\n')
+	if _, err := fmt.Fprintf(conn, "kill %s\nquit\n", username); err != nil {
+		return err
+	}
+	g.Log().Infof(ctx, "[OpenVPN] 已踢下线禁用用户: %s", username)
+	return nil
 }
 
 func boolToInt(b bool) int {
