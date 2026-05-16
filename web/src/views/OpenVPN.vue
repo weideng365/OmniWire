@@ -241,6 +241,7 @@ const fetchUsers = async (showLoading = false) => {
   if (showLoading) tableLoading.value = true
   try {
     const res = await openvpnApi.users()
+    if (toggling) return
     users.value = res.data.users || []
   } finally {
     if (showLoading) tableLoading.value = false
@@ -312,7 +313,7 @@ const handleSaveUser = async () => {
   loading.value = true
   try {
     if (editingUser.value) {
-      await openvpnApi.updateUser(editingUser.value.id, { password: userForm.value.password, enabled: true })
+      await openvpnApi.updateUser(editingUser.value.id, { password: userForm.value.password })
       ElMessage.success('密码已修改')
     } else {
       if (!userForm.value.username) return ElMessage.warning('请输入用户名')
@@ -328,13 +329,15 @@ const handleSaveUser = async () => {
 
 const handleToggle = async (row) => {
   toggling = true
+  const newVal = row.enabled
   try {
-    await openvpnApi.updateUser(row.id, { enabled: row.enabled })
-    ElMessage.success(row.enabled ? '已启用' : '已禁用')
+    await openvpnApi.updateUser(row.id, { enabled: newVal })
+    ElMessage.success(newVal ? '已启用' : '已禁用')
   } catch (e) {
-    row.enabled = !row.enabled
+    row.enabled = !newVal
   } finally {
     toggling = false
+    fetchUsers()
   }
 }
 
