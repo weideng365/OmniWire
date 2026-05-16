@@ -218,20 +218,39 @@ docker-compose up -d
 ```
 
 Exposed ports:
-- `8110` — Web management interface
+- `8080` — Web management interface
 - `51820/udp` — WireGuard VPN
 - `1194/udp` `1194/tcp` — OpenVPN
 
 ### Production Build
 
+Recommended: use the one-click build scripts at project root (auto-syncs frontend assets into `internal/packed/public` and enables `-tags embed`):
+
 ```bash
-# Build frontend (outputs to server/resource/public)
+# Linux / macOS
+./build.sh                # Build for current platform
+./build.sh linux          # Cross-compile Linux amd64
+./build.sh all            # Build both Linux + Windows
+
+# Windows
+build.bat                 # Build for current platform
+```
+
+Output goes to `dist/`. For manual build:
+
+```bash
+# 1. Build frontend (outputs to server/resource/public)
 cd web && npm run build
 
-# Build backend binary (SQLite requires CGO_ENABLED=1)
-cd server && CGO_ENABLED=1 go build -o omniwire main.go
+# 2. Sync frontend output to embed directory (must clear first to avoid stale files)
+cd ../server
+rm -rf internal/packed/public && mkdir -p internal/packed/public
+cp -r resource/public/. internal/packed/public/
 
-# Run
+# 3. Build backend binary (production must use -tags embed to embed frontend; SQLite needs CGO_ENABLED=1)
+CGO_ENABLED=1 go build -tags embed -o omniwire main.go
+
+# 4. Run
 ./omniwire
 ```
 

@@ -224,14 +224,33 @@ docker-compose up -d
 
 ### 生产构建
 
+推荐使用项目根目录提供的一键脚本（自动同步前端资源到 `internal/packed/public` 并启用 `-tags embed`）：
+
 ```bash
-# 构建前端（输出到 server/resource/public）
+# Linux / macOS
+./build.sh                # 编译当前平台
+./build.sh linux          # 交叉编译 Linux amd64
+./build.sh all            # 同时编译 Linux + Windows
+
+# Windows
+build.bat                 # 编译当前平台
+```
+
+输出到 `dist/` 目录。如需手动构建：
+
+```bash
+# 1. 构建前端（输出到 server/resource/public）
 cd web && npm run build
 
-# 构建后端二进制（SQLite 需要 CGO_ENABLED=1）
-cd server && CGO_ENABLED=1 go build -o omniwire main.go
+# 2. 同步前端产物到 embed 目录（必须先清空，否则会残留旧文件）
+cd ../server
+rm -rf internal/packed/public && mkdir -p internal/packed/public
+cp -r resource/public/. internal/packed/public/
 
-# 运行
+# 3. 构建后端二进制（生产环境必须加 -tags embed 内嵌前端；SQLite 需要 CGO_ENABLED=1）
+CGO_ENABLED=1 go build -tags embed -o omniwire main.go
+
+# 4. 运行
 ./omniwire
 ```
 
