@@ -65,6 +65,7 @@ type ForwardRule struct {
 	stopChan      chan struct{}
 	stats         *ForwardStats
 	mu            sync.RWMutex
+	udpSessions   sync.Map
 }
 
 var (
@@ -294,6 +295,14 @@ func Stop(ctx context.Context, id int) error {
 	if rr.udpConn != nil {
 		rr.udpConn.Close()
 	}
+	// 关闭所有存活的 UDP 会话连接，防止 goroutine 泄漏
+	rr.udpSessions.Range(func(key, value interface{}) bool {
+		if session, ok := value.(*udpSession); ok && session.conn != nil {
+			session.conn.Close()
+		}
+		rr.udpSessions.Delete(key)
+		return true
+	})
 	g.Log().Infof(ctx, "[端口转发] 规则 ID=%d 已停止", id)
 	return nil
 }
@@ -483,6 +492,12 @@ func copyWithStats(dst io.Writer, src io.Reader, rateLimit int64) int64 {
 
 // ==================== UDP 转发 (高性能优化) ====================
 
+// udpSession 客户端会话
+type udpSession struct {
+	conn       *net.UDPConn
+	lastActive time.Time
+}
+
 func startUDPForward(fr *ForwardRule) error {
 	addr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", fr.ListenPort))
 	conn, err := net.ListenUDP("udp", addr)
@@ -497,13 +512,6 @@ func startUDPForward(fr *ForwardRule) error {
 	fr.udpConn = conn
 	fr.running = true
 
-	// 客户端会话管理
-	type udpSession struct {
-		conn       *net.UDPConn
-		lastActive time.Time
-	}
-	clientMap := sync.Map{}
-
 	// 定期清理过期会话
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
@@ -514,11 +522,11 @@ func startUDPForward(fr *ForwardRule) error {
 				return
 			case <-ticker.C:
 				now := time.Now()
-				clientMap.Range(func(key, value interface{}) bool {
+				fr.udpSessions.Range(func(key, value interface{}) bool {
 					session := value.(*udpSession)
 					if now.Sub(session.lastActive) > 2*time.Minute {
 						session.conn.Close()
-						clientMap.Delete(key)
+						fr.udpSessions.Delete(key)
 						atomic.AddInt32(&fr.stats.CurrentConn, -1)
 					}
 					return true
@@ -547,7 +555,7 @@ func startUDPForward(fr *ForwardRule) error {
 					key := srcAddr.String()
 
 					// 获取或创建会话
-					sessionInterface, loaded := clientMap.Load(key)
+					sessionInterface, loaded := fr.udpSessions.Load(key)
 					var session *udpSession
 
 					if !loaded {
@@ -564,22 +572,42 @@ func startUDPForward(fr *ForwardRule) error {
 						}
 
 						session = &udpSession{conn: newConn, lastActive: time.Now()}
-						clientMap.Store(key, session)
+						fr.udpSessions.Store(key, session)
 						atomic.AddInt64(&fr.stats.TotalConn, 1)
 						atomic.AddInt32(&fr.stats.CurrentConn, 1)
 
-						// 启动响应处理
+						// 启动响应处理 (监听 stopChan，避免长期泄露)
 						go func(sa *net.UDPAddr, s *udpSession) {
+							defer func() {
+								s.conn.Close()
+								fr.udpSessions.Delete(key)
+								atomic.AddInt32(&fr.stats.CurrentConn, -1)
+							}()
 							respBuf := make([]byte, 65535)
 							for {
-								s.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
-								n, err := s.conn.Read(respBuf)
-								if err != nil {
+								select {
+								case <-fr.stopChan:
 									return
+								default:
+									s.conn.SetReadDeadline(time.Now().Add(time.Second))
+									n, err := s.conn.Read(respBuf)
+									if err != nil {
+										if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+											// 超时检测是否有退出信号
+											if time.Since(s.lastActive) > 2*time.Minute {
+												return
+											}
+											continue
+										}
+										return
+									}
+									s.lastActive = time.Now()
+									atomic.AddInt64(&fr.stats.BytesSent, int64(n))
+									_, writeErr := conn.WriteToUDP(respBuf[:n], sa)
+									if writeErr != nil {
+										return
+									}
 								}
-								s.lastActive = time.Now()
-								atomic.AddInt64(&fr.stats.BytesSent, int64(n))
-								conn.WriteToUDP(respBuf[:n], sa)
 							}
 						}(srcAddr, session)
 					} else {

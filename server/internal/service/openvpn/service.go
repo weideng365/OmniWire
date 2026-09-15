@@ -291,7 +291,22 @@ func UpdateUser(ctx context.Context, id int, password string, enabled *bool) err
 }
 
 func DeleteUser(ctx context.Context, id int) error {
-	_, err := g.DB().Model("openvpn_user").Where("id", id).Delete()
+	row, err := g.DB().Model("openvpn_user").Fields("username").Where("id", id).One()
+	if err != nil || row.IsEmpty() {
+		return fmt.Errorf("用户不存在")
+	}
+	username := row["username"].String()
+
+	// 踢下线并断开连接
+	_ = killClient(ctx, username)
+	Disconnect(ctx, username)
+
+	// 删除 CCD 配置文件
+	absDir, _ := filepath.Abs(ovpnDir)
+	ccdFile := filepath.Join(absDir, "ccd", username)
+	_ = os.Remove(ccdFile)
+
+	_, err = g.DB().Model("openvpn_user").Where("id", id).Delete()
 	return err
 }
 

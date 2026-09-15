@@ -397,10 +397,9 @@ func (s *WireGuardServer) configureInterfaceIP(ifaceName, cidr string) error {
 		return err
 	}
 
-	// 如果 IP 等于网络地址（主机位全 0），自动修正为 .1
+	// 如果 IP 等于网络地址（主机位全 0），自动修正为该子网的第 1 个可用主机地址
 	if ip4 := ip.To4(); ip4 != nil {
 		netIP := ipNet.IP.To4()
-		// 检查主机位是否全 0
 		mask := ipNet.Mask
 		isNetworkAddr := true
 		for i := 0; i < 4; i++ {
@@ -411,7 +410,13 @@ func (s *WireGuardServer) configureInterfaceIP(ifaceName, cidr string) error {
 		}
 		if isNetworkAddr {
 			copy(ip4, netIP)
-			ip4[3] = 1
+			// 将主机号设置为 1 (大端序自增网络地址)
+			for i := 3; i >= 0; i-- {
+				ip4[i]++
+				if ip4[i] != 0 {
+					break
+				}
+			}
 			ip = ip4
 			g.Log().Infof(context.Background(), "[WireGuard] 检测到网络地址，自动修正服务端 IP 为: %s", ip.String())
 		}

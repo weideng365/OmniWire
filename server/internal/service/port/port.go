@@ -35,37 +35,53 @@ type FirewallStatus struct {
 
 // Scan 扫描端口
 func Scan(ctx context.Context, startPort, endPort int) ([]*port.PortInfo, error) {
-	ports := make([]*port.PortInfo, 0)
-
-	concurrency := g.Cfg().MustGet(ctx, "port.scanConcurrency", 100).Int()
-	timeout := g.Cfg().MustGet(ctx, "port.scanTimeout", 100).Int()
-
-	var wg sync.WaitGroup
-	results := make(chan *port.PortInfo, endPort-startPort+1)
-	sem := make(chan struct{}, concurrency)
-
-	for p := startPort; p <= endPort; p++ {
-		wg.Add(1)
-		go func(portNum int) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			// 检查 TCP
-			addr := fmt.Sprintf("127.0.0.1:%d", portNum)
-			conn, err := net.DialTimeout("tcp", addr, time.Duration(timeout)*time.Millisecond)
-			if err == nil {
-				conn.Close()
-				results <- &port.PortInfo{
-					Port:     portNum,
-					Protocol: "tcp",
-					State:    "listen",
-				}
-			}
-		}(p)
+	if startPort < 1 {
+		startPort = 1
+	}
+	if endPort > 65535 {
+		endPort = 65535
+	}
+	if startPort > endPort {
+		return nil, fmt.Errorf("起始端口不能大于结束端口")
 	}
 
+	ports := make([]*port.PortInfo, 0)
+	concurrency := g.Cfg().MustGet(ctx, "port.scanConcurrency", 100).Int()
+	if concurrency <= 0 {
+		concurrency = 100
+	}
+	timeout := g.Cfg().MustGet(ctx, "port.scanTimeout", 100).Int()
+
+	tasks := make(chan int, concurrency*2)
+	results := make(chan *port.PortInfo, concurrency*2)
+
+	var wg sync.WaitGroup
+	// 启动固定数量的 worker goroutine，避免并发大量端口时 goroutine 暴增与内存溢出
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for portNum := range tasks {
+				addr := fmt.Sprintf("127.0.0.1:%d", portNum)
+				conn, err := net.DialTimeout("tcp", addr, time.Duration(timeout)*time.Millisecond)
+				if err == nil {
+					conn.Close()
+					results <- &port.PortInfo{
+						Port:     portNum,
+						Protocol: "tcp",
+						State:    "listen",
+					}
+				}
+			}
+		}()
+	}
+
+	// 任务派发
 	go func() {
+		for p := startPort; p <= endPort; p++ {
+			tasks <- p
+		}
+		close(tasks)
 		wg.Wait()
 		close(results)
 	}()
