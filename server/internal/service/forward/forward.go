@@ -297,10 +297,9 @@ func Stop(ctx context.Context, id int) error {
 	}
 	// 关闭所有存活的 UDP 会话连接，防止 goroutine 泄漏
 	rr.udpSessions.Range(func(key, value interface{}) bool {
-		if session, ok := value.(*udpSession); ok && session.conn != nil {
-			session.conn.Close()
+		if session, ok := value.(*udpSession); ok {
+			session.Close(rr, key.(string))
 		}
-		rr.udpSessions.Delete(key)
 		return true
 	})
 	g.Log().Infof(ctx, "[端口转发] 规则 ID=%d 已停止", id)
@@ -432,12 +431,18 @@ func handleTCPConn(fr *ForwardRule, src net.Conn) {
 	// 等待任一方向完成
 	<-done
 
-	// 半关闭连接，让另一方优雅完成
+	// 半关闭连接，让另一方优雅完成未发送完的数据
 	if tcpConn, ok := src.(*net.TCPConn); ok {
-		tcpConn.CloseRead()
+		_ = tcpConn.CloseRead()
 	}
 	if tcpConn, ok := dst.(*net.TCPConn); ok {
-		tcpConn.CloseRead()
+		_ = tcpConn.CloseRead()
+	}
+
+	// 等待另一方完成或超时优雅退出，避免直接销毁连接导致对端未收完数据
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
 	}
 }
 
@@ -496,6 +501,18 @@ func copyWithStats(dst io.Writer, src io.Reader, rateLimit int64) int64 {
 type udpSession struct {
 	conn       *net.UDPConn
 	lastActive time.Time
+	closeOnce  sync.Once
+}
+
+// Close 安全并幂等地关闭会话，更新连接计数
+func (s *udpSession) Close(fr *ForwardRule, key string) {
+	s.closeOnce.Do(func() {
+		if s.conn != nil {
+			_ = s.conn.Close()
+		}
+		fr.udpSessions.Delete(key)
+		atomic.AddInt32(&fr.stats.CurrentConn, -1)
+	})
 }
 
 func startUDPForward(fr *ForwardRule) error {
@@ -525,9 +542,7 @@ func startUDPForward(fr *ForwardRule) error {
 				fr.udpSessions.Range(func(key, value interface{}) bool {
 					session := value.(*udpSession)
 					if now.Sub(session.lastActive) > 2*time.Minute {
-						session.conn.Close()
-						fr.udpSessions.Delete(key)
-						atomic.AddInt32(&fr.stats.CurrentConn, -1)
+						session.Close(fr, key.(string))
 					}
 					return true
 				})
@@ -572,44 +587,47 @@ func startUDPForward(fr *ForwardRule) error {
 						}
 
 						session = &udpSession{conn: newConn, lastActive: time.Now()}
-						fr.udpSessions.Store(key, session)
-						atomic.AddInt64(&fr.stats.TotalConn, 1)
-						atomic.AddInt32(&fr.stats.CurrentConn, 1)
+						actual, loadedActual := fr.udpSessions.LoadOrStore(key, session)
+						if loadedActual {
+							// 已经被并发 worker 抢先创建，关闭重复连接并复用已存在的 session
+							newConn.Close()
+							session = actual.(*udpSession)
+							session.lastActive = time.Now()
+						} else {
+							atomic.AddInt64(&fr.stats.TotalConn, 1)
+							atomic.AddInt32(&fr.stats.CurrentConn, 1)
 
-						// 启动响应处理 (监听 stopChan，避免长期泄露)
-						go func(sa *net.UDPAddr, s *udpSession) {
-							defer func() {
-								s.conn.Close()
-								fr.udpSessions.Delete(key)
-								atomic.AddInt32(&fr.stats.CurrentConn, -1)
-							}()
-							respBuf := make([]byte, 65535)
-							for {
-								select {
-								case <-fr.stopChan:
-									return
-								default:
-									s.conn.SetReadDeadline(time.Now().Add(time.Second))
-									n, err := s.conn.Read(respBuf)
-									if err != nil {
-										if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-											// 超时检测是否有退出信号
-											if time.Since(s.lastActive) > 2*time.Minute {
-												return
+							// 启动响应处理 (监听 stopChan，避免长期泄露)
+							go func(sa *net.UDPAddr, s *udpSession, sessionKey string) {
+								defer s.Close(fr, sessionKey)
+								respBuf := make([]byte, 65535)
+								for {
+									select {
+									case <-fr.stopChan:
+										return
+									default:
+										s.conn.SetReadDeadline(time.Now().Add(time.Second))
+										n, err := s.conn.Read(respBuf)
+										if err != nil {
+											if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+												// 超时检测是否有退出信号
+												if time.Since(s.lastActive) > 2*time.Minute {
+													return
+												}
+												continue
 											}
-											continue
+											return
 										}
-										return
-									}
-									s.lastActive = time.Now()
-									atomic.AddInt64(&fr.stats.BytesSent, int64(n))
-									_, writeErr := conn.WriteToUDP(respBuf[:n], sa)
-									if writeErr != nil {
-										return
+										s.lastActive = time.Now()
+										atomic.AddInt64(&fr.stats.BytesSent, int64(n))
+										_, writeErr := conn.WriteToUDP(respBuf[:n], sa)
+										if writeErr != nil {
+											return
+										}
 									}
 								}
-							}
-						}(srcAddr, session)
+							}(srcAddr, session, key)
+						}
 					} else {
 						session = sessionInterface.(*udpSession)
 						session.lastActive = time.Now()
