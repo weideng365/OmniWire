@@ -298,8 +298,9 @@ body {
   cursor: not-allowed !important;
 }
 
-/* 弹窗优化 - 解决“紧贴标题”问题 */
+/* 弹窗优化 - 规范对齐与内外边距 */
 .el-dialog {
+  position: relative;
   background-color: var(--bg-card) !important;
   border-radius: var(--radius-xl) !important;
   box-shadow: var(--shadow-xl) !important;
@@ -308,12 +309,21 @@ body {
 }
 
 .el-dialog__header {
+  position: relative;
   border-bottom: 1px solid var(--border-color) !important;
-  padding: 20px 24px !important; /* 增加内边距 */
+  padding: 20px 24px !important;
   margin-right: 0 !important;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+}
+
+.el-dialog--center .el-dialog__header {
+  justify-content: center;
+  text-align: center;
+}
+
+.el-dialog:not(.el-dialog--center) .el-dialog__header {
+  justify-content: flex-start;
 }
 
 .el-dialog__title {
@@ -324,14 +334,16 @@ body {
 }
 
 .el-dialog__headerbtn {
-  position: static !important; /* 移除绝对定位，使用Flex布局对齐 */
+  position: absolute !important;
+  top: 18px !important;
+  right: 20px !important;
   width: 32px !important;
   height: 32px !important;
   border-radius: 50% !important;
-  transition: background-color 0.2s !important;
-  margin-left: auto !important; /* 推到右侧 */
-  top: 0 !important;
-  right: 0 !important;
+  transition: background-color 0.2s, color 0.2s !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
 }
 
 .el-dialog__headerbtn:hover {
@@ -340,17 +352,26 @@ body {
 
 .el-dialog__headerbtn .el-dialog__close {
   color: var(--text-muted) !important;
+  font-size: 16px !important;
 }
 
 .el-dialog__body {
-  padding: 24px 28px !important; /* 增加内容区内边距 */
+  padding: 24px 28px !important;
   color: var(--text-secondary) !important;
 }
 
 .el-dialog__footer {
-  padding: 16px 24px 20px !important; /* 底部内边距 */
+  padding: 16px 24px 20px !important;
   border-top: 1px solid var(--border-color) !important;
   background-color: rgba(var(--primary-rgb), 0.02);
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 12px !important;
+}
+
+.el-dialog--center .el-dialog__footer {
+  justify-content: center !important;
 }
 
 /* 表单标签 */

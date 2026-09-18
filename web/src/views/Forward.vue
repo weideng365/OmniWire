@@ -142,14 +142,14 @@
         <el-divider content-position="left">转发目标</el-divider>
         
         <el-row :gutter="20">
-          <el-col :span="14">
+          <el-col :span="12">
             <el-form-item label="目标地址" required>
               <el-input v-model="ruleForm.targetAddr" placeholder="例如: 192.168.1.100" />
             </el-form-item>
           </el-col>
-          <el-col :span="10">
+          <el-col :span="12">
             <el-form-item label="目标端口" required>
-              <el-input-number v-model="ruleForm.targetPort" :min="1" :max="65535" style="width: 100%" controls-position="right" />
+              <el-input-number v-model="ruleForm.targetPort" :min="1" :max="65535" style="width: 100%" controls-position="right" placeholder="例如: 80"/>
             </el-form-item>
           </el-col>
         </el-row>
@@ -326,8 +326,6 @@ const handleStop = async (row) => {
 const handleToggle = async (row) => {
   try {
     await forwardApi.update(row.id, { enabled: row.enabled })
-    if (row.enabled) await forwardApi.start(row.id)
-    else await forwardApi.stop(row.id)
     ElMessage.success(row.enabled ? '已启用' : '已禁用')
     await loadRules()
   } catch (err) { row.enabled = !row.enabled }
@@ -604,5 +602,14 @@ onUnmounted(() => {
 .stat-l {
   color: var(--text-muted);
   font-size: 12px;
+}
+
+:deep(.el-form-item) {
+  margin-bottom: 18px;
+}
+
+:deep(.el-form-item__content) {
+  display: flex;
+  align-items: center;
 }
 </style>

@@ -160,6 +160,9 @@
           </el-table>
         </div>
       </div>
+      <template #footer>
+        <el-button @click="showCheckDialog = false">关闭</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>

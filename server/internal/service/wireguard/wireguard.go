@@ -8,6 +8,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -66,7 +69,11 @@ type ConfigInput struct {
 // PeerInput 客户端输入
 type PeerInput struct {
 	Name       string
+	PublicKey  string
 	AllowedIPs string
+	Interface  string
+	Endpoint   string
+	Keepalive  int
 	Enabled    bool
 }
 
@@ -261,6 +268,10 @@ func GetPeerConfig(ctx context.Context, id int) (string, error) {
 		return "", fmt.Errorf("客户端不存在")
 	}
 
+	if peer.PrivateKey == "" || peer.PrivateKey == "(none)" {
+		return "", fmt.Errorf("该客户端为手动导入公钥创建，服务端未持有其私钥，无法生成配置文件")
+	}
+
 	serverConfig, err := GetConfig(ctx)
 	if err != nil {
 		return "", err
@@ -341,12 +352,32 @@ func GetPeers(ctx context.Context) ([]*wireguard.PeerInfo, error) {
 	return peers, nil
 }
 
-// CreatePeer 创建客户端
+// CreatePeer 创建客户端 (支持自动生成密钥对或手动指定 PublicKey)
 func CreatePeer(ctx context.Context, input *PeerInput) (*entity.WireguardPeer, error) {
-	// 生成密钥对 (Base64)
-	privateKey, publicKey, err := wgserver.GenerateKeyPair()
-	if err != nil {
-		return nil, fmt.Errorf("生成密钥失败: %v", err)
+	var (
+		privateKey string
+		publicKey  = strings.TrimSpace(input.PublicKey)
+		err        error
+	)
+
+	if publicKey != "" {
+		// 手动指定了公钥，验证 Base64 格式与 32 字节长度
+		keyBytes, keyErr := base64.StdEncoding.DecodeString(publicKey)
+		if keyErr != nil || len(keyBytes) != 32 {
+			return nil, fmt.Errorf("无效的 WireGuard 公钥格式(必须为 32 字节 Base64)")
+		}
+		// 检查公钥是否已存在
+		count, _ := g.DB().Model("wireguard_peer").Where("public_key", publicKey).Count()
+		if count > 0 {
+			return nil, fmt.Errorf("公钥已存在，请直接在列表中编辑或使用设置更新")
+		}
+		privateKey = "" // 手动指定的外部公钥，服务端不保存私钥
+	} else {
+		// 自动生成密钥对 (Base64)
+		privateKey, publicKey, err = wgserver.GenerateKeyPair()
+		if err != nil {
+			return nil, fmt.Errorf("生成密钥失败: %v", err)
+		}
 	}
 
 	// 分配 IP
@@ -358,32 +389,275 @@ func CreatePeer(ctx context.Context, input *PeerInput) (*entity.WireguardPeer, e
 		}
 	}
 
-	peer := &entity.WireguardPeer{
-		Name:       input.Name,
-		PrivateKey: privateKey,
-		PublicKey:  publicKey,
-		AllowedIps: ip,
-		Enabled:    1,
-		CreatedAt:  gtime.Now(),
-		UpdatedAt:  gtime.Now(),
+	keepalive := input.Keepalive
+	if keepalive <= 0 {
+		keepalive = 25
 	}
 
-	// 保存到数据库 - 使用 OmitEmpty 跳过 Id=0，让 SQLite 自动生成 ID
-	res, err := g.DB().Model("wireguard_peer").OmitEmpty().Insert(peer)
+	peer := &entity.WireguardPeer{
+		Name:                input.Name,
+		PrivateKey:          privateKey,
+		PublicKey:           publicKey,
+		AllowedIps:          ip,
+		Endpoint:            input.Endpoint,
+		PersistentKeepalive: keepalive,
+		Enabled:             1,
+		CreatedAt:           gtime.Now(),
+		UpdatedAt:           gtime.Now(),
+	}
+
+	insertData := g.Map{
+		"name":                 peer.Name,
+		"public_key":           peer.PublicKey,
+		"private_key":          peer.PrivateKey,
+		"allowed_ips":          peer.AllowedIps,
+		"endpoint":             peer.Endpoint,
+		"persistent_keepalive": keepalive,
+		"enabled":              1,
+		"created_at":           gtime.Now(),
+		"updated_at":           gtime.Now(),
+	}
+
+	// 保存到数据库
+	res, err := g.DB().Model("wireguard_peer").Data(insertData).Insert()
 	if err != nil {
 		return nil, fmt.Errorf("保存客户端失败: %v", err)
 	}
 	id, _ := res.LastInsertId()
 	peer.Id = int(id)
 
-	// 添加到运行时
-	server := wgserver.GetServer()
-	if server.IsRunning() {
-		server.AddPeer(publicKey, ip)
-	}
+	// 添加到运行时 (纯 Go 运行时 + 系统 wg set 命令双模生效)
+	applyPeerRuntime(ctx, input.Interface, publicKey, ip, input.Endpoint, keepalive)
 
 	g.Log().Infof(ctx, "[WireGuard] 创建客户端: %s (%s)", peer.Name, peer.AllowedIps)
 	return peer, nil
+}
+
+// ValidatePeerInput 验证 Peer 的公钥与 AllowedIPs 格式
+func ValidatePeerInput(publicKey, allowedIPs string) error {
+	publicKey = strings.TrimSpace(publicKey)
+	allowedIPs = strings.TrimSpace(allowedIPs)
+	if publicKey == "" {
+		return fmt.Errorf("公钥不能为空")
+	}
+	if allowedIPs == "" {
+		return fmt.Errorf("AllowedIPs 不能为空")
+	}
+
+	keyBytes, keyErr := base64.StdEncoding.DecodeString(publicKey)
+	if keyErr != nil || len(keyBytes) != 32 {
+		return fmt.Errorf("无效的 WireGuard 公钥格式(必须为 32 字节 Base64)")
+	}
+	return nil
+}
+
+// SetPeer 直接配置/更新 Peer (wg set "$WG_IF" peer "$PEER_PUBKEY" allowed-ips "$BASE_PEER_IP")
+func SetPeer(ctx context.Context, iface, publicKey, allowedIPs, name, endpoint string, keepalive int) (*wireguard.PeerInfo, error) {
+	if err := ValidatePeerInput(publicKey, allowedIPs); err != nil {
+		return nil, err
+	}
+	publicKey = strings.TrimSpace(publicKey)
+	allowedIPs = strings.TrimSpace(allowedIPs)
+
+	if keepalive <= 0 {
+		keepalive = 25
+	}
+
+	// 1. 查找数据库中是否存在此 peer
+	var peer entity.WireguardPeer
+	err := g.DB().Model("wireguard_peer").Where("public_key", publicKey).Scan(&peer)
+
+	now := gtime.Now()
+	if err == nil && peer.Id > 0 {
+		// 已存在，更新
+		updateMap := g.Map{
+			"allowed_ips":          allowedIPs,
+			"persistent_keepalive": keepalive,
+			"enabled":              1,
+			"updated_at":           now,
+		}
+		if name != "" {
+			updateMap["name"] = name
+		}
+		if endpoint != "" {
+			updateMap["endpoint"] = endpoint
+		}
+		_, err = g.DB().Model("wireguard_peer").Where("id", peer.Id).Update(updateMap)
+		if err != nil {
+			return nil, fmt.Errorf("更新数据库失败: %v", err)
+		}
+		peer.AllowedIps = allowedIPs
+		if name != "" {
+			peer.Name = name
+		}
+		if endpoint != "" {
+			peer.Endpoint = endpoint
+		}
+		peer.PersistentKeepalive = keepalive
+		peer.Enabled = 1
+	} else {
+		// 不存在，新增
+		peerName := name
+		if peerName == "" {
+			shortKey := publicKey
+			if len(shortKey) > 8 {
+				shortKey = shortKey[:8]
+			}
+			peerName = fmt.Sprintf("peer-%s", shortKey)
+		}
+		insertData := g.Map{
+			"name":                 peerName,
+			"public_key":           publicKey,
+			"private_key":          "",
+			"allowed_ips":          allowedIPs,
+			"endpoint":             endpoint,
+			"persistent_keepalive": keepalive,
+			"enabled":              1,
+			"created_at":           now,
+			"updated_at":           now,
+		}
+		res, insErr := g.DB().Model("wireguard_peer").Data(insertData).Insert()
+		if insErr != nil {
+			return nil, fmt.Errorf("保存数据库失败: %v", insErr)
+		}
+		id, _ := res.LastInsertId()
+		newPeer := &entity.WireguardPeer{
+			Id:                  int(id),
+			Name:                peerName,
+			PublicKey:           publicKey,
+			PrivateKey:          "",
+			AllowedIps:          allowedIPs,
+			Endpoint:            endpoint,
+			PersistentKeepalive: keepalive,
+			Enabled:             1,
+			CreatedAt:           now,
+			UpdatedAt:           now,
+		}
+		peer = *newPeer
+	}
+
+	// 2. 下发到运行时
+	applyPeerRuntime(ctx, iface, publicKey, allowedIPs, endpoint, keepalive)
+
+	res := &wireguard.PeerInfo{
+		Id:         peer.Id,
+		Name:       peer.Name,
+		PublicKey:  peer.PublicKey,
+		AllowedIPs: peer.AllowedIps,
+		Endpoint:   peer.Endpoint,
+		Enabled:    peer.Enabled == 1,
+		CreatedAt:  peer.CreatedAt.String(),
+		UpdatedAt:  peer.UpdatedAt.String(),
+	}
+	return res, nil
+}
+
+// GetRawPeers 获取底层运行时 Peer 状态 (等同于 wg show "$WG_IF")
+func GetRawPeers(ctx context.Context, iface string) (string, []*wireguard.RawPeerInfo, error) {
+	if iface == "" {
+		if cfg, _ := GetConfig(ctx); cfg != nil && cfg.Interface != "" {
+			iface = cfg.Interface
+		} else {
+			iface = "omniwire"
+		}
+	}
+
+	list := make([]*wireguard.RawPeerInfo, 0)
+
+	// 1. 如果系统 wg 命令行可用，优先执行 wg show <iface> dump
+	if wgPath, err := exec.LookPath("wg"); err == nil && wgPath != "" {
+		cmd := exec.Command(wgPath, "show", iface, "dump")
+		if out, cmdErr := cmd.Output(); cmdErr == nil {
+			lines := strings.Split(string(out), "\n")
+			for i, line := range lines {
+				line = strings.TrimSpace(line)
+				if i == 0 || line == "" {
+					continue
+				}
+				parts := strings.Split(line, "\t")
+				if len(parts) >= 8 {
+					rx, _ := strconv.ParseInt(parts[5], 10, 64)
+					tx, _ := strconv.ParseInt(parts[6], 10, 64)
+					hs, _ := strconv.ParseInt(parts[4], 10, 64)
+					ka, _ := strconv.Atoi(parts[7])
+					hsStr := "从未连接"
+					if hs > 0 {
+						hsStr = time.Unix(hs, 0).Format("2006-01-02 15:04:05")
+					}
+					ep := parts[2]
+					if ep == "(none)" {
+						ep = ""
+					}
+					list = append(list, &wireguard.RawPeerInfo{
+						PublicKey:           parts[0],
+						Endpoint:            ep,
+						AllowedIPs:          parts[3],
+						LatestHandshake:     hsStr,
+						TransferRx:          rx,
+						TransferTx:          tx,
+						PersistentKeepalive: ka,
+					})
+				}
+			}
+			if len(list) > 0 {
+				return iface, list, nil
+			}
+		}
+	}
+
+	// 2. 回退到内置 wgserver 运行时
+	server := wgserver.GetServer()
+	server.RefreshPeerStats()
+	allPeers := server.GetAllPeers()
+	for _, p := range allPeers {
+		hsStr := "从未连接"
+		if !p.LastHandshake.IsZero() {
+			hsStr = p.LastHandshake.Format("2006-01-02 15:04:05")
+		}
+		list = append(list, &wireguard.RawPeerInfo{
+			PublicKey:           p.PublicKey,
+			Endpoint:            p.Endpoint,
+			AllowedIPs:          p.AllowedIPs,
+			LatestHandshake:     hsStr,
+			TransferRx:          p.TransferRx,
+			TransferTx:          p.TransferTx,
+			PersistentKeepalive: 25,
+		})
+	}
+
+	return iface, list, nil
+}
+
+// applyPeerRuntime 下发 Peer 到运行时 (纯 Go wgserver + 系统 wg 命令双模)
+func applyPeerRuntime(ctx context.Context, iface, publicKey, allowedIPs, endpoint string, keepalive int) {
+	server := wgserver.GetServer()
+	if server.IsRunning() {
+		_ = server.SetPeer(publicKey, allowedIPs, endpoint, keepalive)
+	}
+
+	if iface == "" {
+		if cfg, _ := GetConfig(ctx); cfg != nil && cfg.Interface != "" {
+			iface = cfg.Interface
+		} else {
+			iface = "omniwire"
+		}
+	}
+
+	if wgPath, err := exec.LookPath("wg"); err == nil && wgPath != "" {
+		args := []string{"set", iface, "peer", publicKey, "allowed-ips", allowedIPs}
+		if endpoint != "" {
+			args = append(args, "endpoint", endpoint)
+		}
+		if keepalive > 0 {
+			args = append(args, "persistent-keepalive", fmt.Sprintf("%d", keepalive))
+		}
+		cmd := exec.Command(wgPath, args...)
+		if out, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
+			g.Log().Debugf(ctx, "[WireGuard] wg set 命令行下发提示: %v, 输出: %s", cmdErr, string(out))
+		} else {
+			g.Log().Infof(ctx, "[WireGuard] wg set 命令成功执行: wg %s", strings.Join(args, " "))
+		}
+	}
 }
 
 // UpdatePeer 更新客户端

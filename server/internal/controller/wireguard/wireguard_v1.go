@@ -136,6 +136,8 @@ func (c *ControllerV1) PeerList(ctx context.Context, req *wireguard.PeerListReq)
 func (c *ControllerV1) PeerCreate(ctx context.Context, req *wireguard.PeerCreateReq) (res *wireguard.PeerCreateRes, err error) {
 	peer, err := svcWireguard.CreatePeer(ctx, &svcWireguard.PeerInput{
 		Name:       req.Name,
+		PublicKey:  req.PublicKey,
+		Interface:  req.Interface,
 		AllowedIPs: req.AllowedIPs,
 	})
 	if err != nil {
@@ -153,6 +155,33 @@ func (c *ControllerV1) PeerCreate(ctx context.Context, req *wireguard.PeerCreate
 		},
 	}
 	g.Log().Infof(ctx, "客户端 %s 已创建", req.Name)
+	return
+}
+
+// SetPeer 设置/下发客户端Peer (等同于 wg set "$WG_IF" peer "$PEER_PUBKEY" allowed-ips "$BASE_PEER_IP")
+func (c *ControllerV1) SetPeer(ctx context.Context, req *wireguard.SetPeerReq) (res *wireguard.SetPeerRes, err error) {
+	peerInfo, err := svcWireguard.SetPeer(ctx, req.Interface, req.PublicKey, req.AllowedIPs, req.Name, req.Endpoint, req.Keepalive)
+	if err != nil {
+		return nil, err
+	}
+	res = &wireguard.SetPeerRes{
+		Success: true,
+		Peer:    peerInfo,
+	}
+	g.Log().Infof(ctx, "Peer %s 已通过 wg set 规则成功配置", req.PublicKey)
+	return
+}
+
+// RawPeers 查询底层运行时Peer列表 (等同于 wg show "$WG_IF")
+func (c *ControllerV1) RawPeers(ctx context.Context, req *wireguard.RawPeersReq) (res *wireguard.RawPeersRes, err error) {
+	iface, list, err := svcWireguard.GetRawPeers(ctx, req.Interface)
+	if err != nil {
+		return nil, err
+	}
+	res = &wireguard.RawPeersRes{
+		Interface: iface,
+		Peers:     list,
+	}
 	return
 }
 

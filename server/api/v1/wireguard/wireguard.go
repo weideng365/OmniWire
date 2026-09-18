@@ -138,7 +138,9 @@ type PeerListRes struct {
 type PeerCreateReq struct {
 	g.Meta        `path:"/peers" method:"post" tags:"WireGuard" summary:"创建客户端"`
 	Name          string `json:"name" v:"required#客户端名称必填"`
-	AllowedIPs    string `json:"allowedIPs"`
+	PublicKey     string `json:"publicKey"`   // 对端公钥，若填写则无需系统生成密钥对（对应手动指定公钥）
+	Interface     string `json:"interface"`   // 指定网络接口，如 omniwire 或 wg0，可选
+	AllowedIPs    string `json:"allowedIPs"`  // 允许的 IP（对端内网IP网段）
 	UploadLimit   int64  `json:"uploadLimit" d:"0"`   // bytes/s, 0=无限制
 	DownloadLimit int64  `json:"downloadLimit" d:"0"` // bytes/s, 0=无限制
 }
@@ -146,6 +148,46 @@ type PeerCreateReq struct {
 // PeerCreateRes 创建客户端响应
 type PeerCreateRes struct {
 	Peer *PeerInfo `json:"peer"`
+}
+
+// SetPeerReq 设置/下发客户端Peer (等同于 wg set "$WG_IF" peer "$PEER_PUBKEY" allowed-ips "$BASE_PEER_IP")
+type SetPeerReq struct {
+	g.Meta     `path:"/set-peer" method:"post" tags:"WireGuard" summary:"设置客户端Peer (wg set)"`
+	Interface  string `json:"interface"`                       // 网络接口名称，留空默认为系统接口
+	PublicKey  string `json:"publicKey" v:"required#公钥必填"`    // 对端公钥 Base64
+	AllowedIPs string `json:"allowedIPs" v:"required#允许IP必填"` // 允许IP (如 10.66.66.2/32)
+	Name       string `json:"name"`                            // 客户端名称/备注，可选
+	Endpoint   string `json:"endpoint"`                        // 端点地址 (host:port)，可选
+	Keepalive  int    `json:"keepalive" d:"25"`                // 存活心跳间隔秒数，默认 25
+}
+
+// SetPeerRes 设置客户端Peer响应
+type SetPeerRes struct {
+	Success bool      `json:"success"`
+	Peer    *PeerInfo `json:"peer"`
+}
+
+// RawPeerInfo 底层运行时Peer详情
+type RawPeerInfo struct {
+	PublicKey           string `json:"publicKey"`
+	Endpoint            string `json:"endpoint"`
+	AllowedIPs          string `json:"allowedIPs"`
+	LatestHandshake     string `json:"latestHandshake"`
+	TransferRx          int64  `json:"transferRx"`
+	TransferTx          int64  `json:"transferTx"`
+	PersistentKeepalive int    `json:"persistentKeepalive"`
+}
+
+// RawPeersReq 查询底层运行时Peer列表 (等同于 wg show "$WG_IF")
+type RawPeersReq struct {
+	g.Meta    `path:"/raw-peers" method:"get" tags:"WireGuard" summary:"查看底层运行时Peer列表(wg show)"`
+	Interface string `json:"interface" in:"query"` // 网络接口名称，可选
+}
+
+// RawPeersRes 查询底层运行时Peer列表响应
+type RawPeersRes struct {
+	Interface string         `json:"interface"`
+	Peers     []*RawPeerInfo `json:"peers"`
 }
 
 // PeerUpdateReq 更新客户端请求

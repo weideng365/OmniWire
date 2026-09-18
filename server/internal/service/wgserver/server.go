@@ -364,6 +364,13 @@ func (s *WireGuardServer) RefreshPeerStats() {
 		case "last_handshake_time_nsec":
 			lastHandshakeNsec, _ = strconv.ParseInt(value, 10, 64)
 
+		case "endpoint":
+			if currentPubKey != "" && value != "" {
+				if peer, ok := s.peers[currentPubKey]; ok {
+					peer.Endpoint = value
+				}
+			}
+
 		case "rx_bytes":
 			rxBytes, _ = strconv.ParseInt(value, 10, 64)
 
@@ -729,6 +736,51 @@ func (s *WireGuardServer) loadAndApplyPeers(ctx context.Context) error {
 		return s.dev.IpcSet(ipcBuilder.String())
 	}
 	return nil
+}
+
+// SetPeer 动态设置/更新 Peer (等同于 wg set "$WG_IF" peer "$PEER_PUBKEY" allowed-ips "$BASE_PEER_IP")
+func (s *WireGuardServer) SetPeer(publicKey, allowedIPs, endpoint string, keepalive int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	peer, exists := s.peers[publicKey]
+	if !exists {
+		peer = &Peer{
+			PublicKey: publicKey,
+			Enabled:   true,
+		}
+		s.peers[publicKey] = peer
+	}
+	peer.AllowedIPs = allowedIPs
+	if endpoint != "" {
+		peer.Endpoint = endpoint
+	}
+	peer.Enabled = true
+
+	if !s.running || s.dev == nil {
+		return nil
+	}
+
+	hexKey, err := base64ToHex(publicKey)
+	if err != nil {
+		return fmt.Errorf("无效的公钥格式: %v", err)
+	}
+
+	ipc := fmt.Sprintf("public_key=%s\nreplace_allowed_ips=true\n", hexKey)
+	for _, cidr := range strings.Split(allowedIPs, ",") {
+		cidr = strings.TrimSpace(cidr)
+		if cidr != "" {
+			ipc += fmt.Sprintf("allowed_ip=%s\n", cidr)
+		}
+	}
+	if endpoint != "" {
+		ipc += fmt.Sprintf("endpoint=%s\n", endpoint)
+	}
+	if keepalive > 0 {
+		ipc += fmt.Sprintf("persistent_keepalive_interval=%d\n", keepalive)
+	}
+
+	return s.dev.IpcSet(ipc)
 }
 
 // AddPeer 动态添加 Peer

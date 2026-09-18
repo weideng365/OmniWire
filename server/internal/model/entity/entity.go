@@ -12,8 +12,10 @@ type WireguardPeer struct {
 	Name          string      `json:"name" orm:"name"`
 	PublicKey     string      `json:"publicKey" orm:"public_key"`
 	PrivateKey    string      `json:"privateKey" orm:"private_key"`
-	AllowedIps    string      `json:"allowedIps" orm:"allowed_ips"`
-	Enabled       int         `json:"enabled" orm:"enabled"`
+	AllowedIps          string      `json:"allowedIps" orm:"allowed_ips"`
+	Endpoint            string      `json:"endpoint" orm:"endpoint"`
+	PersistentKeepalive int         `json:"persistentKeepalive" orm:"persistent_keepalive"`
+	Enabled             int         `json:"enabled" orm:"enabled"`
 	UploadLimit   int64       `json:"uploadLimit" orm:"upload_limit"`     // 上传速率限制 (bytes/s), 0=无限制
 	DownloadLimit int64       `json:"downloadLimit" orm:"download_limit"` // 下载速率限制 (bytes/s), 0=无限制
 	TotalUpload   int64       `json:"totalUpload" orm:"total_upload"`     // 历史总上传流量

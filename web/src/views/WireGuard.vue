@@ -72,19 +72,33 @@
                 <el-option :value="30" label="30秒" />
               </el-select>
             </div>
-            <el-button type="primary" @click="showAddDialog = true">
+            <el-button @click="openRawPeersDialog">
+              <el-icon><Monitor /></el-icon>
+              底层状态 (wg show)
+            </el-button>
+            <el-button type="primary" @click="openAddDialog">
               <el-icon><Plus /></el-icon>
-              添加客户端
+              添加客户端 / wg set
             </el-button>
           </div>
         </div>
       </template>
-      
+
       <el-table :data="peers" style="width: 100%" v-loading="tableLoading" :row-style="{ height: '60px' }">
         <el-table-column prop="id" label="ID" width="60" align="center" />
         <el-table-column prop="name" label="名称" min-width="120">
           <template #default="{ row }">
             <span class="peer-name">{{ row.name }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="公钥" min-width="130">
+          <template #default="{ row }">
+            <el-tooltip :content="row.publicKey" placement="top">
+              <span class="key-display-small" style="cursor: pointer;" @click="copyToClipboard(row.publicKey, '公钥')">
+                <code class="key-text" style="max-width: 90px;">{{ truncateKey(row.publicKey) }}</code>
+                <el-icon style="font-size: 12px; color: var(--text-muted);"><DocumentCopy /></el-icon>
+              </span>
+            </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="100">
@@ -152,9 +166,17 @@
     </el-card>
     
     <!-- 添加/编辑客户端对话框 -->
-    <el-dialog v-model="showAddDialog" :title="editingPeer ? '编辑客户端' : '添加客户端'" width="480px" destroy-on-close>
-      <el-form :model="peerForm" label-width="80px" label-position="top">
-        <el-form-item label="名称" required>
+    <el-dialog v-model="showAddDialog" :title="editingPeer ? '编辑客户端' : '添加客户端 / 配置 Peer'" width="540px" destroy-on-close>
+      <div v-if="!editingPeer" style="display: flex; justify-content: center; margin-bottom: 20px;">
+        <el-radio-group v-model="peerForm.addMode">
+          <el-radio-button value="auto">自动生成密钥对</el-radio-button>
+          <el-radio-button value="manual">公钥配置 (wg set)</el-radio-button>
+        </el-radio-group>
+      </div>
+
+      <!-- 自动生成密钥对模式 -->
+      <el-form v-if="editingPeer || peerForm.addMode === 'auto'" :model="peerForm" label-position="top">
+        <el-form-item label="客户端名称" required>
           <el-input v-model="peerForm.name" placeholder="例如：iPhone, Macbook Pro" size="large">
             <template #prefix><el-icon><User /></el-icon></template>
           </el-input>
@@ -166,16 +188,107 @@
           <div class="form-tip">留空将自动从地址池分配下一个可用 IP</div>
         </el-form-item>
       </el-form>
+
+      <!-- 公钥配置 (wg set) 模式 -->
+      <el-form v-else :model="peerForm" label-position="top">
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="网络接口 ($WG_IF)">
+              <el-input v-model="peerForm.interface" :placeholder="wgStatus.interface || 'omniwire'" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="保活间隔 (Keepalive)">
+              <el-input-number v-model="peerForm.keepalive" :min="0" :max="3600" style="width: 100%" controls-position="right" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="对端公钥 ($PEER_PUBKEY)" required>
+          <el-input v-model="peerForm.publicKey" placeholder="例如：44字符 Base64 公钥" />
+          <div class="form-tip">远端设备 WireGuard 生成的 Base64 公钥</div>
+        </el-form-item>
+        <el-form-item label="允许内网 IP ($BASE_PEER_IP)" required>
+          <el-input v-model="peerForm.allowedIPs" placeholder="例如：10.66.66.5/32" />
+          <div class="form-tip">指定该 Peer 允许通信的内网 IP 网段</div>
+        </el-form-item>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="客户端名称/备注">
+              <el-input v-model="peerForm.name" placeholder="可选，如：Remote-Gateway" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="对端端点 (Endpoint)">
+              <el-input v-model="peerForm.endpoint" placeholder="可选，如：1.2.3.4:51820" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <div class="command-preview">
+          <span class="preview-label">等效指令:</span>
+          <code>wg set "{{ peerForm.interface || wgStatus.interface || 'omniwire' }}" peer "{{ peerForm.publicKey || '$PEER_PUBKEY' }}" allowed-ips "{{ peerForm.allowedIPs || '$BASE_PEER_IP' }}"</code>
+        </div>
+      </el-form>
+
       <template #footer>
         <el-button @click="showAddDialog = false">取消</el-button>
         <el-button type="primary" @click="handleSavePeer" :loading="loading">
-          {{ editingPeer ? '保存修改' : '立即添加' }}
+          {{ editingPeer ? '保存修改' : (peerForm.addMode === 'manual' ? '执行下发并保存' : '立即添加') }}
         </el-button>
       </template>
     </el-dialog>
-    
+
+    <!-- 底层运行时 Peers 对话框 (wg show) -->
+    <el-dialog v-model="showRawDialog" :title="`底层运行时 Peers (wg show ${rawInterface || wgStatus.interface || 'omniwire'})`" width="820px" destroy-on-close>
+      <div class="raw-peers-container">
+        <div class="raw-actions" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+          <div style="font-size: 13px; color: var(--text-secondary);">
+            网卡接口: <el-tag size="small" type="info">{{ rawInterface || wgStatus.interface || 'omniwire' }}</el-tag>
+            <span style="margin-left: 12px;">共 {{ rawPeersList.length }} 个活动 Peer</span>
+          </div>
+          <el-button size="small" @click="loadRawPeers" :loading="rawLoading">
+            <el-icon><Refresh /></el-icon> 刷新状态
+          </el-button>
+        </div>
+        <el-table :data="rawPeersList" style="width: 100%" v-loading="rawLoading" empty-text="当前接口暂无底层活动 Peer">
+          <el-table-column label="公钥 (PublicKey)" min-width="170">
+            <template #default="{ row }">
+              <div class="key-display-small">
+                <code class="key-text" style="max-width: 110px;">{{ truncateKey(row.publicKey) }}</code>
+                <el-button link @click="copyToClipboard(row.publicKey, '公钥')">
+                  <el-icon><DocumentCopy /></el-icon>
+                </el-button>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="allowedIPs" label="允许IP (AllowedIPs)" min-width="140">
+            <template #default="{ row }">
+              <code class="ip-tag">{{ row.allowedIPs }}</code>
+            </template>
+          </el-table-column>
+          <el-table-column prop="endpoint" label="对端端点 (Endpoint)" min-width="140">
+            <template #default="{ row }">
+              <span>{{ row.endpoint || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="latestHandshake" label="最新握手" min-width="140">
+            <template #default="{ row }">
+              <span class="time-text">{{ row.latestHandshake || '从未连接' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="收发流量" min-width="150">
+            <template #default="{ row }">
+              <div class="traffic-stats">
+                <span class="rx"><el-icon><Download /></el-icon> {{ formatBytes(row.transferRx) }}</span>
+                <span class="tx"><el-icon><Upload /></el-icon> {{ formatBytes(row.transferTx) }}</span>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-dialog>
+
     <!-- 配置对话框 -->
-    <el-dialog v-model="showConfigDialog" title="WireGuard 服务配置" width="800px" custom-class="config-dialog">
+    <el-dialog v-model="showConfigDialog" title="WireGuard 服务配置" width="800px" class="config-dialog">
       <el-form :model="configForm" label-width="100px" size="default">
         <!-- 密钥信息（只读） -->
         <div class="config-section">
@@ -249,7 +362,7 @@
             </el-col>
           </el-row>
         </div>
-        
+
         <div class="config-section">
           <div class="section-header">高级设置</div>
           <el-row :gutter="24">
@@ -281,10 +394,14 @@
               </el-form-item>
             </el-col>
           </el-row>
-          <el-form-item label="开机自启">
-            <el-switch v-model="configForm.autoStart" />
-            <span style="margin-left: 12px; font-size: 13px; color: var(--text-muted);">服务启动时自动启动 WireGuard</span>
-          </el-form-item>
+          <el-row :gutter="24">
+            <el-col :span="24">
+              <el-form-item label="开机自启" class="align-center-item">
+                <el-switch v-model="configForm.autoStart" />
+                <span style="margin-left: 12px; font-size: 13px; color: var(--text-muted);">服务启动时自动启动 WireGuard</span>
+              </el-form-item>
+            </el-col>
+          </el-row>
         </div>
       </el-form>
       <template #footer>
@@ -346,7 +463,7 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { wireguardApi } from '@/api'
-import { DocumentCopy, View, Hide, VideoPlay, VideoPause, Refresh, Setting, Plus, User, Download, Edit, Delete, Cellphone, Upload, Connection, Notebook } from '@element-plus/icons-vue'
+import { DocumentCopy, View, Hide, VideoPlay, VideoPause, Refresh, Setting, Plus, User, Download, Edit, Delete, Cellphone, Upload, Connection, Notebook, Monitor } from '@element-plus/icons-vue'
 
 const loading = ref(false)
 const tableLoading = ref(false)
@@ -358,6 +475,12 @@ const showConfigDialog = ref(false)
 const showQRDialog = ref(false)
 const editingPeer = ref(null)
 const qrcodeData = ref('')
+
+// 底层运行时 Peers (wg show)
+const showRawDialog = ref(false)
+const rawLoading = ref(false)
+const rawInterface = ref('')
+const rawPeersList = ref([])
 
 // 连接日志
 const showLogDialog = ref(false)
@@ -373,7 +496,15 @@ const logTotal = ref(0)
 const refreshInterval = ref(parseInt(localStorage.getItem('wg_refresh_interval') || '5'))
 let refreshTimer = null
 
-const peerForm = ref({ name: '', allowedIPs: '' })
+const peerForm = ref({
+  addMode: 'auto',
+  name: '',
+  allowedIPs: '',
+  publicKey: '',
+  interface: '',
+  endpoint: '',
+  keepalive: 25
+})
 const configForm = ref({
   listenPort: 51820,
   address: '',
@@ -499,30 +630,111 @@ const handleRestart = async () => {
   loading.value = false
 }
 
+const openAddDialog = () => {
+  editingPeer.value = null
+  peerForm.value = {
+    addMode: 'auto',
+    name: '',
+    allowedIPs: '',
+    publicKey: '',
+    interface: wgStatus.value.interface || 'omniwire',
+    endpoint: '',
+    keepalive: 25
+  }
+  showAddDialog.value = true
+}
+
+const openRawPeersDialog = () => {
+  showRawDialog.value = true
+  loadRawPeers()
+}
+
+const loadRawPeers = async () => {
+  rawLoading.value = true
+  try {
+    const res = await wireguardApi.rawPeers({ interface: wgStatus.value.interface || 'omniwire' })
+    rawInterface.value = res.data?.interface || wgStatus.value.interface || 'omniwire'
+    rawPeersList.value = res.data?.peers || []
+  } catch (err) {
+    console.error(err)
+    ElMessage.error('获取底层运行时状态失败')
+  }
+  rawLoading.value = false
+}
+
 const handleSavePeer = async () => {
-  if (!peerForm.value.name) {
-    ElMessage.warning('请输入客户端名称')
+  if (editingPeer.value) {
+    if (!peerForm.value.name?.trim()) {
+      ElMessage.warning('请输入客户端名称')
+      return
+    }
+    loading.value = true
+    try {
+      await wireguardApi.updatePeer(editingPeer.value.id, peerForm.value)
+      ElMessage.success('保存成功')
+      showAddDialog.value = false
+      await loadPeers()
+    } catch (err) { console.error(err) }
+    loading.value = false
     return
   }
-  loading.value = true
-  try {
-    if (editingPeer.value) {
-      await wireguardApi.updatePeer(editingPeer.value.id, peerForm.value)
-    } else {
-      await wireguardApi.createPeer(peerForm.value)
+
+  // 新增模式：公钥导入 (wg set)
+  if (peerForm.value.addMode === 'manual') {
+    if (!peerForm.value.publicKey?.trim()) {
+      ElMessage.warning('请输入对端公钥 (PEER_PUBKEY)')
+      return
     }
-    ElMessage.success(editingPeer.value ? '保存成功' : '添加成功')
-    showAddDialog.value = false
-    peerForm.value = { name: '', allowedIPs: '' }
-    editingPeer.value = null
-    await loadPeers()
-  } catch (err) { console.error(err) }
-  loading.value = false
+    if (!peerForm.value.allowedIPs?.trim()) {
+      ElMessage.warning('请输入允许内网 IP (BASE_PEER_IP)')
+      return
+    }
+    loading.value = true
+    try {
+      await wireguardApi.setPeer({
+        interface: peerForm.value.interface || wgStatus.value.interface || 'omniwire',
+        publicKey: peerForm.value.publicKey.trim(),
+        allowedIPs: peerForm.value.allowedIPs.trim(),
+        name: peerForm.value.name?.trim() || '',
+        endpoint: peerForm.value.endpoint?.trim() || '',
+        keepalive: peerForm.value.keepalive || 25
+      })
+      ElMessage.success('Peer 规则配置成功 (已执行 wg set 并保存)')
+      showAddDialog.value = false
+      await loadPeers()
+    } catch (err) { console.error(err) }
+    loading.value = false
+  } else {
+    // 自动生成模式
+    if (!peerForm.value.name?.trim()) {
+      ElMessage.warning('请输入客户端名称')
+      return
+    }
+    loading.value = true
+    try {
+      await wireguardApi.createPeer({
+        name: peerForm.value.name.trim(),
+        allowedIPs: peerForm.value.allowedIPs?.trim() || ''
+      })
+      ElMessage.success('客户端添加成功')
+      showAddDialog.value = false
+      await loadPeers()
+    } catch (err) { console.error(err) }
+    loading.value = false
+  }
 }
 
 const handleEdit = (row) => {
   editingPeer.value = row
-  peerForm.value = { name: row.name, allowedIPs: row.allowedIPs }
+  peerForm.value = {
+    addMode: 'auto',
+    name: row.name,
+    allowedIPs: row.allowedIPs,
+    publicKey: row.publicKey || '',
+    interface: wgStatus.value.interface || 'omniwire',
+    endpoint: row.endpoint || '',
+    keepalive: 25
+  }
   showAddDialog.value = true
 }
 
@@ -914,6 +1126,11 @@ onUnmounted(() => {
   line-height: 1.4;
 }
 
+.align-center-item :deep(.el-form-item__content) {
+  display: flex;
+  align-items: center;
+}
+
 /* 二维码 */
 .qrcode-container {
   display: flex;
@@ -939,5 +1156,36 @@ onUnmounted(() => {
   margin-top: 20px;
   font-size: 14px;
   color: var(--text-secondary);
+}
+
+.command-preview {
+  margin-top: 12px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-color);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.command-preview code {
+  color: var(--primary-color);
+  word-break: break-all;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.preview-label {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.key-display-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 </style>

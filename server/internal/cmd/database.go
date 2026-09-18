@@ -242,5 +242,15 @@ func InitDatabase(ctx context.Context) error {
 		_, _ = g.DB().Exec(ctx, `ALTER TABLE openvpn_user ADD COLUMN static_ip TEXT DEFAULT ''`)
 	}
 
+	// 迁移：为 wireguard_peer 添加 endpoint, persistent_keepalive 列
+	hasWgEndpoint, _ := g.DB().GetValue(ctx, `SELECT COUNT(*) FROM pragma_table_info('wireguard_peer') WHERE name='endpoint'`)
+	if hasWgEndpoint.Int() == 0 {
+		_, _ = g.DB().Exec(ctx, `ALTER TABLE wireguard_peer ADD COLUMN endpoint VARCHAR(255) DEFAULT ''`)
+	}
+	hasWgKeepalive, _ := g.DB().GetValue(ctx, `SELECT COUNT(*) FROM pragma_table_info('wireguard_peer') WHERE name='persistent_keepalive'`)
+	if hasWgKeepalive.Int() == 0 {
+		_, _ = g.DB().Exec(ctx, `ALTER TABLE wireguard_peer ADD COLUMN persistent_keepalive INTEGER DEFAULT 25`)
+	}
+
 	return nil
 }
